@@ -14,6 +14,8 @@ Binder's AI orchestration layer.
 - Composable context construction
 - Tool registry and execution (provider-neutral)
 - Semantic retries, token budgets, cost estimates, tracing metadata
+- `Runtime` for files, search, structured commands, and git (not LLM providers)
+- `IssueImplementationWorkflow` for a single concrete issue → plan → edit → fmt → test → diff path
 
 HTTP, provider SDKs, authentication, and request mapping stay in `binder-llm`.
 
@@ -98,6 +100,21 @@ let llm = LlmClient::from_provider(
 AiClient::builder().llm(llm).build()
 # }
 ```
+
+Workflows talk to the development environment through `Runtime`, not `std::fs` or shell strings:
+
+```rust
+use binder_ai::{Command, MemoryRuntime, Runtime, RuntimeError, SearchRequest};
+
+# async fn workflow(runtime: MemoryRuntime) -> Result<(), RuntimeError> {
+let hits = runtime.search(SearchRequest::content("fn add")).await?;
+let _fmt = runtime.execute(Command::new("cargo").arg("fmt")).await?;
+# let _ = hits;
+# Ok(())
+# }
+```
+
+`MemoryRuntime` is for tests (in-memory files, scripted commands). `LocalRuntime::new(".")` is the development implementation.
 
 ## Develop
 

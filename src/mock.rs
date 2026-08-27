@@ -1,16 +1,17 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
+use crate::client::AiClient;
 use binder_llm::{
-    ChatRequest, ChatResponse, ChatStream, EmbeddingRequest, EmbeddingResponse, LlmError,
-    LlmProvider, ModelInfo,
+    ChatMessage, ChatRequest, ChatResponse, ChatStream, EmbeddingRequest, EmbeddingResponse,
+    LlmClient, LlmError, LlmProvider, ModelInfo, Provider,
 };
 
 /// Queued LLM for tests. Each `chat` pops the next response.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct ScriptedProvider {
-    inner: Mutex<ScriptedInner>,
+    inner: Arc<Mutex<ScriptedInner>>,
 }
 
 #[derive(Debug, Default)]
@@ -102,5 +103,37 @@ pub struct MockRouter {
 impl MockRouter {
     pub fn new(target: crate::routing::ModelTarget) -> Self {
         Self { target }
+    }
+}
+
+/// Test `AiClient` with scripted JSON turns. No network.
+pub struct MockAiClient {
+    pub client: AiClient,
+    provider: ScriptedProvider,
+}
+
+impl MockAiClient {
+    pub fn json_turns(turns: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        let mut scripted = ScriptedProvider::new();
+        for turn in turns {
+            scripted = scripted.push_chat(ChatResponse::new(
+                Provider::Ollama,
+                "mock",
+                ChatMessage::assistant(turn.as_ref()),
+            ));
+        }
+        let provider = scripted.clone();
+        let config = LlmClient::builder()
+            .provider(Provider::Ollama)
+            .model("mock")
+            .build_config()
+            .expect("mock llm config");
+        let llm = LlmClient::from_provider(Arc::new(scripted), config);
+        let client = AiClient::builder().semantic_retries(1).llm(llm).build();
+        Self { client, provider }
+    }
+
+    pub fn chat_calls(&self) -> u32 {
+        self.provider.chat_calls()
     }
 }

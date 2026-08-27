@@ -13,7 +13,8 @@ concurrency:
 
 jobs:
   ci:
-    uses: dpkimball/dpk-ci/.github/workflows/rust-library-ci.yml@master
+    # Temporarily pinned until dpkimball/dpk-ci#267 merges (workspace reset).
+    uses: dpkimball/dpk-ci/.github/workflows/rust-library-ci.yml@fix/rust-library-ci-workspace-reset
     with:
       project_name: binder-ai
       runner: product-ci

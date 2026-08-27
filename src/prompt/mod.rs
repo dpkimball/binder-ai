@@ -170,6 +170,16 @@ fn builtin_prompts() -> Vec<PromptVersion> {
             template: "Decide if the content is allowed. Reply with JSON {\"allowed\": bool, \"reason\": string}.\n\n{input}".into(),
         },
         PromptVersion {
+            name: "issue-implementation-plan".into(),
+            version: 1,
+            template: "Reply with JSON only: {\"files\": [string], \"steps\": [string], \"summary\": string}. Do not include markdown.\n\n{input}".into(),
+        },
+        PromptVersion {
+            name: "issue-implementation-edit".into(),
+            version: 1,
+            template: "Reply with JSON only: {\"edits\": [{\"path\": string, \"contents\": string}], \"summary\": string}. Each contents value is the full file. Do not include markdown.\n\n{input}".into(),
+        },
+        PromptVersion {
             name: "complete".into(),
             version: 1,
             template: "{input}".into(),
