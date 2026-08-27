@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch: {}
+
+concurrency:
+  group: binder-ai-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: dpkimball/dpk-ci/.github/workflows/rust-library-ci.yml@master
+    with:
+      project_name: binder-ai
+      runner: product-ci
+    secrets: inherit
