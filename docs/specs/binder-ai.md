@@ -3,6 +3,7 @@
 github_issue: https://github.com/dpkimball/binder-ai/issues/1
 github_issue_catalog: https://github.com/dpkimball/binder-ai/issues/3
 github_issue_runtime: https://github.com/dpkimball/binder-ai/issues/4
+github_issue_workflow: https://github.com/dpkimball/binder-ai/issues/6
 
 Binder's AI orchestration layer. Applications never call `binder-llm` directly. All AI traffic flows through `AiClient`.
 
@@ -22,6 +23,7 @@ Binder's AI orchestration layer. Applications never call `binder-llm` directly. 
 - Semantic retries (malformed JSON, tool failure, context too large, provider unavailable)
 - Token budgets, cost estimates (no billing), tracing metadata, optional caches
 - `Runtime` trait (`LocalRuntime` / `MemoryRuntime`) for files, search, structured commands, and git — independent of LLM providers
+- `IssueImplementationWorkflow`: search → plan → edit → `cargo fmt` → `cargo test` → git diff (not a generic engine)
 
 ## Out of scope
 

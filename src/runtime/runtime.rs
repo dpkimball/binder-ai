@@ -61,3 +61,33 @@ pub struct GitDiff {
     pub branch: String,
     pub patch: String,
 }
+
+#[async_trait]
+impl<T> Runtime for std::sync::Arc<T>
+where
+    T: Runtime + ?Sized,
+{
+    async fn read_file(&self, path: &Path) -> Result<String> {
+        (**self).read_file(path).await
+    }
+
+    async fn write_file(&self, path: &Path, contents: &str) -> Result<()> {
+        (**self).write_file(path, contents).await
+    }
+
+    async fn search(&self, request: SearchRequest) -> Result<Vec<SearchResult>> {
+        (**self).search(request).await
+    }
+
+    async fn execute(&self, command: Command) -> Result<CommandResult> {
+        (**self).execute(command).await
+    }
+
+    async fn git_status(&self) -> Result<GitStatus> {
+        (**self).git_status().await
+    }
+
+    async fn git_diff(&self) -> Result<GitDiff> {
+        (**self).git_diff().await
+    }
+}

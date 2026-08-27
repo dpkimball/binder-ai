@@ -15,6 +15,7 @@ Binder's AI orchestration layer.
 - Tool registry and execution (provider-neutral)
 - Semantic retries, token budgets, cost estimates, tracing metadata
 - `Runtime` for files, search, structured commands, and git (not LLM providers)
+- `IssueImplementationWorkflow` for a single concrete issue → plan → edit → fmt → test → diff path
 
 HTTP, provider SDKs, authentication, and request mapping stay in `binder-llm`.
 

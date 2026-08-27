@@ -25,6 +25,7 @@ mod session;
 mod task;
 mod telemetry;
 mod tools;
+mod workflows;
 
 pub use builder::AiClientBuilder;
 pub use cache::{AiCache, MemoryCache};
@@ -35,7 +36,7 @@ pub use conversation::{
     Conversation, ConversationId, ConversationStore, InMemoryConversationStore,
 };
 pub use error::{AiError, Result};
-pub use mock::{MockRouter, ScriptedProvider};
+pub use mock::{MockAiClient, MockRouter, ScriptedProvider};
 pub use models::{
     Availability, CatalogFile, CostClass, ExecutionMode, ModelCapabilities, ModelCapability,
     ModelCatalog, ModelDescriptor, ModelId, ModelRequirements, PrefixProfile, Pricing,
@@ -58,6 +59,10 @@ pub use session::{SessionId, UserId, WorkflowId};
 pub use task::{Task, TaskKind};
 pub use telemetry::{estimate_cost, estimate_cost_for, AiMetrics, CostEstimate};
 pub use tools::{MockToolExecutor, ToolExecutor, ToolKind, ToolRegistry, UnboundToolExecutor};
+pub use workflows::{
+    FileEdit, ImplementationPlan, Issue, IssueImplementationRequest, IssueImplementationResult,
+    IssueImplementationWorkflow, WorkflowError,
+};
 
 /// Spec alias: callers describe a task, not a vendor.
 pub type AiTask = TaskKind;

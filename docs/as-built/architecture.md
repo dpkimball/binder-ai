@@ -7,6 +7,7 @@ flowchart TD
   apps["binder-server / binder-cloud / binder-desktop / binder-cli"]
   ai["binder-ai AiClient"]
   runtime["binder-ai Runtime"]
+  wf["IssueImplementationWorkflow"]
   catalog["Model Catalog"]
   selector["ModelSelector"]
   llm["binder-llm LlmClient"]
@@ -14,6 +15,9 @@ flowchart TD
   env["files / git / cargo / search"]
   apps --> ai
   apps --> runtime
+  apps --> wf
+  wf --> ai
+  wf --> runtime
   ai --> catalog
   ai --> selector
   selector --> llm
@@ -49,3 +53,7 @@ Effective catalog = builtin TOML metadata + Ollama discovery (`list_models`) + u
 5. `git_diff`
 
 `LocalRuntime` is the development implementation (`tokio::fs`, `tokio::process::Command`, `git2`, `ignore` search). `MemoryRuntime` is the test implementation (in-memory files, scripted commands). Docker/SSH/sandbox runtimes are out of scope until the trait has been used by real workflows.
+
+## IssueImplementationWorkflow
+
+Concrete sequence, not a framework: search and read via `Runtime` → plan JSON via `AiClient` → file edits via `AiClient` → `write_file` → `cargo fmt` / `cargo test` via structured `Command` → `git_diff`. Tests use `MemoryRuntime` and `MockAiClient`.

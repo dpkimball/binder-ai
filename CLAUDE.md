@@ -22,6 +22,7 @@ src/
   prompt/, context/, conversation.rs, session.rs
   tools/, telemetry/, cache/, providers/, planners/
   runtime/                           # LocalRuntime + MemoryRuntime
+  workflows/issue/                   # IssueImplementationWorkflow
 ```
 
 Built-in prompts live in `prompt/mod.rs`. Catalog routing lives in `routing/selector.rs` and `models/`. Workflows must use `Runtime` instead of `std::fs` / `Command` / `git2`.
