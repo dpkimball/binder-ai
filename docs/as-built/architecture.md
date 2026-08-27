@@ -1,20 +1,24 @@
 # binder-ai as-built
 
-`binder-ai` is a Rust library. `AiClient` is the only type applications should construct.
+`binder-ai` is a Rust library. Applications construct [`AiClient`] for model work and [`Runtime`] for the development environment. They do not call `binder-llm` or touch the filesystem directly from workflows.
 
 ```mermaid
 flowchart TD
   apps["binder-server / binder-cloud / binder-desktop / binder-cli"]
   ai["binder-ai AiClient"]
+  runtime["binder-ai Runtime"]
   catalog["Model Catalog"]
   selector["ModelSelector"]
   llm["binder-llm LlmClient"]
   providers["Ollama / OpenAI / Anthropic / xAI / Gemini"]
+  env["files / git / cargo / search"]
   apps --> ai
+  apps --> runtime
   ai --> catalog
   ai --> selector
   selector --> llm
   llm --> providers
+  runtime --> env
 ```
 
 ## Request path
@@ -33,3 +37,15 @@ Infrastructure HTTP retries stay in `binder-llm`.
 ## Catalog merge
 
 Effective catalog = builtin TOML metadata + Ollama discovery (`list_models`) + user TOML overlays + which providers have credentials (or were injected in tests).
+
+## Runtime
+
+`Runtime` owns files, search, structured commands, and git. It does not own routing, prompts, or tool calling. Workflows depend on the trait:
+
+1. `search` / `read_file`
+2. `AiClient::execute` (reasoning)
+3. `write_file`
+4. `execute(cargo fmt)` / `execute(cargo test)` — argv only, never a shell string
+5. `git_diff`
+
+`LocalRuntime` is the development implementation (`tokio::fs`, `tokio::process::Command`, `git2`, `ignore` search). `MemoryRuntime` is the test implementation (in-memory files, scripted commands). Docker/SSH/sandbox runtimes are out of scope until the trait has been used by real workflows.

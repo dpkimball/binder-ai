@@ -20,6 +20,7 @@ mod request;
 mod response;
 mod router;
 mod routing;
+mod runtime;
 mod session;
 mod task;
 mod telemetry;
@@ -49,6 +50,10 @@ pub use request::{AiRequest, AiRequestBuilder};
 pub use response::{AiResponse, AiUsage, ExecutionTrace};
 pub use router::Router;
 pub use routing::{CatalogSelector, FallbackChain, ModelSelection, ModelSelector, ModelTarget};
+pub use runtime::{
+    Command, CommandResult, GitDiff, GitFileStatus, GitStatus, GitStatusEntry, LocalRuntime,
+    MemoryRuntime, Runtime, RuntimeError, RuntimeResult, SearchKind, SearchRequest, SearchResult,
+};
 pub use session::{SessionId, UserId, WorkflowId};
 pub use task::{Task, TaskKind};
 pub use telemetry::{estimate_cost, estimate_cost_for, AiMetrics, CostEstimate};

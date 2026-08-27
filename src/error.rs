@@ -47,6 +47,9 @@ pub enum AiError {
 
     #[error("invalid configuration: {message}")]
     Configuration { message: String },
+
+    #[error(transparent)]
+    Runtime(#[from] crate::runtime::RuntimeError),
 }
 
 /// Result alias for binder-ai operations.
@@ -71,6 +74,7 @@ impl AiError {
             Self::Json { .. } => "json",
             Self::Conversation { .. } => "conversation",
             Self::Configuration { .. } => "configuration",
+            Self::Runtime(_) => "runtime",
         }
     }
 
