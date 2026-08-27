@@ -6,6 +6,12 @@ use crate::context::IssueContext;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Task {
+    /// Produce a 2–3 sentence plain-language narrative from a structured running month
+    /// summary. `context` is a pre-serialised `RunningMonthSummary` or equivalent text
+    /// representation. Routes `PreferLocal` — Ollama when available, cloud fallback.
+    HealthInsight {
+        context: String,
+    },
     Summarization {
         document: String,
     },
@@ -60,6 +66,7 @@ pub enum Task {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskKind {
+    HealthInsight,
     Summarization,
     Classification,
     Extraction,
@@ -78,6 +85,7 @@ pub enum TaskKind {
 impl Task {
     pub fn kind(&self) -> TaskKind {
         match self {
+            Self::HealthInsight { .. } => TaskKind::HealthInsight,
             Self::Summarization { .. } => TaskKind::Summarization,
             Self::Classification { .. } => TaskKind::Classification,
             Self::Extraction { .. } => TaskKind::Extraction,
@@ -96,6 +104,7 @@ impl Task {
 
     pub fn user_input(&self) -> String {
         match self {
+            Self::HealthInsight { context } => context.clone(),
             Self::Summarization { document } => document.clone(),
             Self::Classification { text, labels } => {
                 if labels.is_empty() {
@@ -140,6 +149,7 @@ impl Task {
 impl TaskKind {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::HealthInsight => "health_insight",
             Self::Summarization => "summarization",
             Self::Classification => "classification",
             Self::Extraction => "extraction",
@@ -158,6 +168,7 @@ impl TaskKind {
 
     pub fn prompt_name(self) -> &'static str {
         match self {
+            Self::HealthInsight => "health-insight",
             Self::ArchitectureReview => "architecture-review",
             Self::CodeGeneration => "code-generation",
             Self::CodeReview => "code-review",
