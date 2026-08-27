@@ -86,13 +86,32 @@ impl ModelCatalog {
             .unwrap_or_default()
     }
 
-    /// Tests / injected clients: every model for these providers is selectable.
+    pub fn mark_unavailable(&mut self, id: &ModelId) {
+        if let Some(model) = self.models.iter_mut().find(|m| &m.id == id) {
+            model.availability = Availability::Unavailable;
+        }
+    }
+
+    /// Mark every model for these providers. Do **not** use this to mark local
+    /// models Available — discovery via [`Self::ingest_names`] does that.
     pub fn mark_providers(&mut self, providers: &[Provider], status: Availability) {
         for model in &mut self.models {
             if providers.contains(&model.provider) {
                 model.availability = status;
             }
         }
+    }
+
+    pub fn ids(&self) -> Vec<String> {
+        self.models.iter().map(|m| m.id.to_string()).collect()
+    }
+
+    pub fn ids_with(&self, status: Availability) -> Vec<String> {
+        self.models
+            .iter()
+            .filter(|m| m.availability == status)
+            .map(|m| m.id.to_string())
+            .collect()
     }
 
     pub fn mark_all_except(&mut self, providers: &[Provider], status: Availability) {
@@ -169,8 +188,16 @@ fn conservative_discovered(provider: Provider, upstream: &str) -> ModelDescripto
         display_name: upstream.to_string(),
         capabilities: ModelCapabilities {
             chat: true,
+            coding: true,
+            reasoning: true,
+            planning: false,
+            tools: true,
+            structured_output: true,
             streaming: true,
-            ..ModelCapabilities::default()
+            embeddings: false,
+            vision: false,
+            audio: false,
+            long_context: false,
         },
         execution: ExecutionMode::from_provider(provider),
         context_window: None,
@@ -185,10 +212,10 @@ fn conservative_discovered(provider: Provider, upstream: &str) -> ModelDescripto
             }
         },
         quality: QualityProfile {
-            general: 2,
-            coding: 2,
-            reasoning: 2,
-            tool_use: 2,
+            general: 3,
+            coding: 3,
+            reasoning: 3,
+            tool_use: 3,
         },
         availability: Availability::Available,
         metadata: std::collections::HashMap::from([
@@ -230,10 +257,58 @@ mod tests {
             .unwrap();
         assert!(mystery.capabilities.chat);
         assert_eq!(mystery.pricing.cost_class, CostClass::Free);
+        assert_eq!(mystery.availability, Availability::Available);
+        assert!(mystery.capabilities.coding);
         let missing = catalog
             .get(&ModelId::new(Provider::Ollama, "mistral-small"))
             .unwrap();
         assert_eq!(missing.availability, Availability::Unavailable);
+        assert_eq!(
+            catalog
+                .get(&ModelId::new(Provider::Ollama, "deepseek-r1:32b"))
+                .unwrap()
+                .availability,
+            Availability::Unavailable
+        );
+    }
+
+    #[test]
+    fn configured_qwen_deepseek_installed_qwen_only() {
+        let mut catalog = ModelCatalog::from_toml(
+            r#"
+[[models]]
+key = "qwen"
+provider = "ollama"
+model = "qwen3-coder:30b"
+capabilities = { chat = true, coding = true, reasoning = true }
+quality = { general = 4, coding = 5, reasoning = 4 }
+cost_class = "free"
+
+[[models]]
+key = "deepseek"
+provider = "ollama"
+model = "deepseek-r1:32b"
+capabilities = { chat = true, coding = true, reasoning = true }
+quality = { general = 4, coding = 4, reasoning = 5 }
+cost_class = "free"
+"#,
+        )
+        .unwrap();
+        catalog.ingest_names(Provider::Ollama, &["qwen3-coder:30b".into()]);
+        assert_eq!(
+            catalog
+                .get(&ModelId::new(Provider::Ollama, "qwen3-coder:30b"))
+                .unwrap()
+                .availability,
+            Availability::Available
+        );
+        assert_eq!(
+            catalog
+                .get(&ModelId::new(Provider::Ollama, "deepseek-r1:32b"))
+                .unwrap()
+                .availability,
+            Availability::Unavailable
+        );
     }
 
     #[test]

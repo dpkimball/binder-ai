@@ -42,6 +42,16 @@ Infrastructure HTTP retries stay in `binder-llm`.
 
 Effective catalog = builtin TOML metadata + Ollama discovery (`list_models`) + user TOML overlays + which providers have credentials (or were injected in tests).
 
+`AiClient::builder().build()` builds that effective catalog during construction:
+
+1. Start from the configured catalog (builtin or injected TOML).
+2. Mark providers without credentials (or not in `available_providers`) Unavailable.
+3. Discover installed Ollama models via `binder-llm` `list_models`.
+4. Mark installed local models Available; mark missing configured local models Unavailable.
+5. Add unknown installed names with prefix-profile metadata, or conservative defaults.
+
+The router never scores the raw configured catalog. Unavailable models are not selectable unless an explicit model override is set. Local model-not-found (Ollama 404) is an availability failure and falls back to the next candidate.
+
 ## Runtime
 
 `Runtime` owns files, search, structured commands, and git. It does not own routing, prompts, or tool calling. Workflows depend on the trait:

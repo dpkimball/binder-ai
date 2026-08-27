@@ -11,7 +11,10 @@ pub enum Availability {
 }
 
 impl Availability {
+    /// Only [`Self::Available`] is selectable. [`Self::Unknown`] means not yet
+    /// discovered; the effective catalog must resolve local models to Available
+    /// or Unavailable before routing.
     pub fn is_selectable(self) -> bool {
-        matches!(self, Self::Available | Self::Unknown)
+        matches!(self, Self::Available)
     }
 }

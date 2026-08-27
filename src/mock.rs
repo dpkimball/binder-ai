@@ -125,7 +125,7 @@ impl MockAiClient {
         let provider = scripted.clone();
         let config = LlmClient::builder()
             .provider(Provider::Ollama)
-            .model("mock")
+            .model("qwen3-coder:30b")
             .build_config()
             .expect("mock llm config");
         let llm = LlmClient::from_provider(Arc::new(scripted), config);

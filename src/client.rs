@@ -54,7 +54,7 @@ impl AiClient {
         self.metrics.lock().map(|m| m.clone()).unwrap_or_default()
     }
 
-    pub fn catalog(&self) -> &ModelCatalog {
+    pub fn catalog(&self) -> ModelCatalog {
         self.router.catalog()
     }
 
@@ -126,7 +126,7 @@ impl AiClient {
             }
         }
         let request = AiRequest::new(TaskKind::Embedding, cache_key.clone());
-        let mut requirements = request.requirements(self.router.catalog());
+        let mut requirements = request.requirements(&self.router.catalog());
         if request.policy.is_none() {
             requirements.execution_policy = self.config.routing_policy;
         }
@@ -189,7 +189,7 @@ impl AiClient {
             .map_err(|_| AiError::budget("budget ledger poisoned"))?
             .check_request(&self.config.token_budget, request.input.len() as u32 / 4)?;
 
-        let mut requirements = request.requirements(self.router.catalog());
+        let mut requirements = request.requirements(&self.router.catalog());
         if request.policy.is_none() {
             requirements.execution_policy = self.config.routing_policy;
         }
@@ -270,6 +270,19 @@ impl AiClient {
                             fallbacks += 1;
                         }
                     }
+                }
+                Err(err) if err.is_local_model_missing() => {
+                    tracing::info!(
+                        selected_model = %target.id,
+                        fallback_count = fallbacks + 1,
+                        reason = "model_not_found",
+                        "routing.fallback"
+                    );
+                    self.router.mark_unavailable(&target.id);
+                    last_err = AiError::ModelUnavailable {
+                        message: target.id.to_string(),
+                    };
+                    fallbacks += 1;
                 }
                 Err(err) if err.is_fallback_candidate() => {
                     last_err = err;
@@ -420,7 +433,7 @@ impl AiClient {
     }
 
     /// Refresh local Ollama availability via `binder-llm` `list_models`. No HTTP here.
-    pub async fn refresh_catalog(&mut self) -> Result<()> {
+    pub async fn refresh_catalog(&self) -> Result<()> {
         if self
             .available_providers
             .as_ref()
@@ -436,14 +449,20 @@ impl AiClient {
         let client = self.factory.client_for(&probe)?;
         match client.list_models().await {
             Ok(infos) => {
-                self.router
-                    .catalog_mut()
-                    .ingest_discovered(Provider::Ollama, &infos);
+                let installed: Vec<String> = infos.iter().map(|info| info.id.clone()).collect();
+                tracing::info!(installed = installed.join(","), "catalog.discovered");
+                self.router.ingest_discovered(Provider::Ollama, &infos);
+                let catalog = self.router.catalog();
+                tracing::info!(
+                    available = catalog.ids_with(Availability::Available).join(","),
+                    unavailable = catalog.ids_with(Availability::Unavailable).join(","),
+                    "catalog.effective"
+                );
                 Ok(())
             }
             Err(err) => {
+                tracing::warn!(error_kind = err.kind(), "catalog.discovery_failed");
                 self.router
-                    .catalog_mut()
                     .mark_providers(&[Provider::Ollama], Availability::Unavailable);
                 Err(err.into())
             }
