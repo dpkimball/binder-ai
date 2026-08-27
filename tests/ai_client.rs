@@ -6,7 +6,7 @@ use binder_ai::{
 };
 use binder_llm::{
     ChatMessage, ChatResponse, EmbeddingResponse, FinishReason, LlmClient, LlmError, MockProvider,
-    Provider, ToolCall, ToolResult, Usage,
+    ModelInfo, Provider, ToolCall, ToolResult, Usage,
 };
 
 fn llm(provider: impl binder_llm::LlmProvider + 'static, kind: Provider, model: &str) -> LlmClient {
@@ -70,7 +70,7 @@ async fn json_retries_then_succeeds() {
         .push_chat(assistant(r#"{"ok":true}"#));
     let ai = AiClient::builder()
         .semantic_retries(2)
-        .llm(llm(scripted, Provider::Ollama, "mock"))
+        .llm(llm(scripted, Provider::Ollama, "qwen3-coder:30b"))
         .build();
     let parsed: Out = ai
         .chat_json(AiRequest::new(TaskKind::Extraction, "blob"))
@@ -150,7 +150,7 @@ async fn tool_loop_executes_registry() {
             .with_result(ToolKind::GitStatus.as_str(), ToolResult::new("1", "ok")),
     );
     let ai = AiClient::builder()
-        .llm(llm(scripted, Provider::Ollama, "mock"))
+        .llm(llm(scripted, Provider::Ollama, "qwen3-coder:30b"))
         .tool_executor(executor.clone())
         .build();
     let mut request = AiRequest::from_task(Task::ArchitectureReview {
@@ -244,4 +244,65 @@ async fn conversation_persists_turns() {
     ai.chat(request).await.unwrap();
     let conv = store.get(&id).unwrap().unwrap();
     assert_eq!(conv.messages.len(), 2);
+}
+
+#[tokio::test]
+async fn missing_local_model_falls_back() {
+    let scripted = ScriptedProvider::new()
+        .with_models(vec![
+            ModelInfo::new(Provider::Ollama, "deepseek-r1:32b"),
+            ModelInfo::new(Provider::Ollama, "qwen3-coder:30b"),
+        ])
+        .push_chat_err(LlmError::invalid("model 'deepseek-r1:32b' not found"))
+        .push_chat(assistant(r#"{"steps":["ok"]}"#));
+    let ai = AiClient::builder()
+        .routing_policy(RoutingPolicy::LocalOnly)
+        .available_providers(vec![Provider::Ollama])
+        .llm(llm(scripted, Provider::Ollama, "probe"))
+        .build();
+    let out = ai
+        .plan("do the thing")
+        .await
+        .expect("fallback should succeed");
+    assert!(out.fallbacks >= 1);
+    assert_eq!(out.content, r#"{"steps":["ok"]}"#);
+    assert_eq!(out.execution.provider, Provider::Ollama);
+}
+
+#[tokio::test]
+async fn empty_discovered_catalog_is_typed_error() {
+    let scripted = ScriptedProvider::new().with_models(Vec::new());
+    let ai = AiClient::builder()
+        .routing_policy(RoutingPolicy::LocalOnly)
+        .available_providers(vec![Provider::Ollama])
+        .llm(llm(scripted, Provider::Ollama, "probe"))
+        .build();
+    let err = ai
+        .plan("do the thing")
+        .await
+        .expect_err("no installed local models");
+    assert_eq!(err.kind(), "no_eligible_model");
+}
+
+#[tokio::test]
+async fn unknown_installed_model_is_routable() {
+    let scripted = ScriptedProvider::new()
+        .with_models(vec![ModelInfo::new(Provider::Ollama, "mystery-local")])
+        .push_chat(assistant("hello"));
+    let ai = AiClient::builder()
+        .routing_policy(RoutingPolicy::LocalOnly)
+        .available_providers(vec![Provider::Ollama])
+        .llm(llm(scripted, Provider::Ollama, "probe"))
+        .build();
+    let catalog = ai.catalog();
+    assert_eq!(
+        catalog
+            .get(&binder_ai::ModelId::new(Provider::Ollama, "mystery-local"))
+            .unwrap()
+            .availability,
+        binder_ai::Availability::Available
+    );
+    let out = ai.complete("hi").await.unwrap();
+    assert_eq!(out.content, "hello");
+    assert_eq!(out.execution.model, "mystery-local");
 }

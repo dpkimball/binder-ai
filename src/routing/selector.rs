@@ -88,13 +88,23 @@ impl ModelSelector for CatalogSelector {
             {
                 return Err(AiError::LocalExecutionRequired);
             }
-            if !eligible(&model, *task, requirements) {
+            if let Some(reason) = reject(&model, *task, requirements, true) {
+                tracing::debug!(
+                    model_id = %model.id,
+                    reason,
+                    "routing.reject"
+                );
                 return Err(AiError::NoEligibleModel);
             }
-            let fallbacks = rank(self, *task, requirements, catalog)
+            let fallbacks: Vec<_> = rank(self, *task, requirements, catalog)
                 .into_iter()
                 .filter(|m| m.id != model.id)
                 .collect();
+            tracing::info!(
+                selected_model = %model.id,
+                fallback_count = fallbacks.len() as u32,
+                "routing.selected"
+            );
             return Ok(ModelSelection {
                 chosen: model,
                 fallbacks,
@@ -103,9 +113,18 @@ impl ModelSelector for CatalogSelector {
 
         let ranked = rank(self, *task, requirements, catalog);
         let Some(chosen) = ranked.first().cloned() else {
+            tracing::info!(
+                available = catalog.ids_with(Availability::Available).len() as u32,
+                "routing.empty"
+            );
             return Err(AiError::NoEligibleModel);
         };
-        let fallbacks = ranked.into_iter().skip(1).collect();
+        let fallbacks = ranked.into_iter().skip(1).collect::<Vec<_>>();
+        tracing::info!(
+            selected_model = %chosen.id,
+            fallback_count = fallbacks.len() as u32,
+            "routing.selected"
+        );
         Ok(ModelSelection { chosen, fallbacks })
     }
 }
@@ -116,12 +135,14 @@ fn rank(
     requirements: &ModelRequirements,
     catalog: &ModelCatalog,
 ) -> Vec<ModelDescriptor> {
-    let mut eligible: Vec<(f64, ModelDescriptor)> = catalog
-        .models()
-        .iter()
-        .filter(|m| eligible(m, task, requirements))
-        .map(|m| (selector.score(m, task, requirements), m.clone()))
-        .collect();
+    let mut eligible: Vec<(f64, ModelDescriptor)> = Vec::new();
+    for model in catalog.models() {
+        if let Some(reason) = reject(model, task, requirements, false) {
+            tracing::debug!(model_id = %model.id, reason, "routing.reject");
+            continue;
+        }
+        eligible.push((selector.score(model, task, requirements), model.clone()));
+    }
 
     match requirements.execution_policy {
         ExecutionPolicy::LowestCost | ExecutionPolicy::FreeFirst | ExecutionPolicy::Fastest => {
@@ -184,40 +205,45 @@ fn cost_key(model: &ModelDescriptor) -> u8 {
     model.pricing.cost_class.rank()
 }
 
-fn eligible(model: &ModelDescriptor, task: TaskKind, req: &ModelRequirements) -> bool {
+fn reject(
+    model: &ModelDescriptor,
+    task: TaskKind,
+    req: &ModelRequirements,
+    allow_unavailable: bool,
+) -> Option<&'static str> {
     if req.excluded_models.contains(&model.id) {
-        return false;
+        return Some("excluded");
     }
-    if !model.availability.is_selectable() || model.availability == Availability::Unavailable {
-        return false;
+    if !allow_unavailable && !model.availability.is_selectable() {
+        return Some("unavailable");
     }
     if model.execution == ExecutionMode::Local && !req.execution_policy.allows_local() {
-        return false;
+        return Some("execution_policy");
     }
     if model.execution == ExecutionMode::Cloud && !req.execution_policy.allows_cloud() {
-        return false;
+        return Some("execution_policy");
     }
     if model.capabilities.required_fit(&req.required_capabilities) < 1.0 {
-        return false;
+        return Some("capabilities");
     }
     if let Some(needed) = req.context_tokens {
         match model.context_window {
-            Some(window) if window < needed => return false,
+            Some(window) if window < needed => return Some("context_window"),
             None => {}
             Some(_) => {}
         }
     }
     if let Some(max) = req.max_cost {
         if !model.pricing.cost_class.within(max) {
-            return false;
+            return Some("cost");
         }
     }
     if let Some(min) = req.min_quality {
         if model.quality.for_task(task) < min {
-            return false;
+            return Some("quality");
         }
     }
-    true
+    None
 }
 
 impl CatalogSelector {

@@ -233,6 +233,75 @@ fn fallback_advances_correctly() {
 }
 
 #[test]
+fn unknown_availability_is_not_selected() {
+    let catalog = ModelCatalog::from_toml(
+        r#"
+[[models]]
+key = "qwen"
+provider = "ollama"
+model = "qwen3-coder:30b"
+capabilities = { chat = true, coding = true, reasoning = true }
+quality = { general = 4, coding = 5, reasoning = 4 }
+cost_class = "free"
+"#,
+    )
+    .unwrap();
+    let err = select(
+        &catalog,
+        TaskKind::CodeGeneration,
+        ExecutionPolicy::LocalOnly,
+    )
+    .unwrap_err();
+    assert_eq!(err.kind(), "no_eligible_model");
+}
+
+#[test]
+fn empty_effective_catalog_is_typed_error() {
+    let mut catalog = fixture();
+    catalog.mark_providers(
+        &[Provider::Ollama, Provider::Anthropic],
+        Availability::Unavailable,
+    );
+    let err = select(
+        &catalog,
+        TaskKind::CodeGeneration,
+        ExecutionPolicy::LocalOnly,
+    )
+    .unwrap_err();
+    assert_eq!(err.kind(), "no_eligible_model");
+}
+
+#[test]
+fn unknown_installed_local_model_is_selectable() {
+    let mut catalog = ModelCatalog::from_toml(
+        r#"
+[[models]]
+key = "configured-missing"
+provider = "ollama"
+model = "deepseek-r1:32b"
+capabilities = { chat = true, coding = true, reasoning = true }
+quality = { general = 4, coding = 4, reasoning = 5 }
+cost_class = "free"
+
+[task_defaults.conversation]
+required = ["chat"]
+"#,
+    )
+    .unwrap();
+    catalog.ingest_names(Provider::Ollama, &["mystery-local".into()]);
+    let selection = select(&catalog, TaskKind::Conversation, ExecutionPolicy::LocalOnly).unwrap();
+    assert_eq!(selection.chosen.upstream(), "mystery-local");
+    assert_eq!(selection.chosen.availability, Availability::Available);
+    assert_eq!(
+        catalog
+            .get(&ModelId::new(Provider::Ollama, "deepseek-r1:32b"))
+            .unwrap()
+            .availability,
+        Availability::Unavailable
+    );
+}
+
+#[test]
 fn no_eligible_model_returns_error() {
     let catalog = fixture();
     let mut requirements = ModelRequirements::for_task(TaskKind::CodeGeneration, &catalog);

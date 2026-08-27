@@ -122,6 +122,9 @@ impl AiError {
     }
 
     pub fn is_fallback_candidate(&self) -> bool {
+        if self.is_local_model_missing() {
+            return true;
+        }
         match self {
             Self::Llm(err) => matches!(
                 err,
@@ -134,6 +137,19 @@ impl AiError {
             Self::RoutingFailure { .. }
             | Self::ProviderFailure { .. }
             | Self::ModelUnavailable { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// Ollama (and similar) report a missing model as HTTP 404 / "not found".
+    /// That is an availability failure, not a malformed request.
+    pub fn is_local_model_missing(&self) -> bool {
+        match self {
+            Self::ModelUnavailable { .. } => true,
+            Self::Llm(LlmError::ProviderError {
+                status: Some(404), ..
+            }) => true,
+            Self::Llm(LlmError::InvalidRequest { message }) => looks_like_missing_model(message),
             _ => false,
         }
     }
@@ -151,6 +167,15 @@ impl AiError {
     }
 }
 
+fn looks_like_missing_model(message: &str) -> bool {
+    let m = message.to_ascii_lowercase();
+    let missing = m.contains("not found")
+        || m.contains("does not exist")
+        || m.contains("no such model")
+        || m.contains("unknown model");
+    missing && (m.contains("model") || m.contains("ollama"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,5 +185,14 @@ mod tests {
         assert_eq!(AiError::routing("none").kind(), "routing_failure");
         assert_eq!(AiError::json("bad", 2).kind(), "json");
         assert_eq!(AiError::NoEligibleModel.kind(), "no_eligible_model");
+    }
+
+    #[test]
+    fn model_not_found_is_fallback() {
+        let err = AiError::Llm(LlmError::invalid("model 'deepseek-r1:32b' not found"));
+        assert!(err.is_local_model_missing());
+        assert!(err.is_fallback_candidate());
+        let schema = AiError::Llm(LlmError::invalid("invalid json schema"));
+        assert!(!schema.is_local_model_missing());
     }
 }

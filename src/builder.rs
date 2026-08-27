@@ -5,12 +5,12 @@ use crate::cache::{AiCache, MemoryCache};
 use crate::client::AiClient;
 use crate::config::{AiConfig, ProviderSettings, TokenBudget};
 use crate::conversation::{ConversationStore, InMemoryConversationStore};
-use crate::models::{Availability, ModelCatalog};
+use crate::models::{Availability, ExecutionMode, ModelCatalog, ModelId};
 use crate::policy::RoutingPolicy;
 use crate::prompt::manager::PromptManager;
 use crate::prompt::PromptRegistry;
 use crate::providers::{DefaultLlmFactory, LlmFactory, StaticLlmFactory};
-use crate::routing::Router;
+use crate::routing::{ModelTarget, Router};
 use crate::task::TaskKind;
 use crate::telemetry::AiMetrics;
 use crate::tools::{ToolExecutor, ToolRegistry, UnboundToolExecutor};
@@ -168,6 +168,10 @@ impl AiClientBuilder {
     }
 
     /// Infallible, matching the spec `AiClient::builder().build()`.
+    ///
+    /// Local providers are discovered here. The router receives the **effective**
+    /// catalog only (configured + discovery). Configured local models are never
+    /// silently marked Available.
     pub fn build(self) -> AiClient {
         let config = AiConfig {
             routing_policy: self.routing_policy,
@@ -195,8 +199,50 @@ impl AiClientBuilder {
             .available_providers
             .clone()
             .unwrap_or_else(|| config.available_providers());
+        let configured_ids = catalog.ids();
+        tracing::info!(
+            configured = configured_ids.join(","),
+            enabled_providers = selectable
+                .iter()
+                .map(|p| p.as_str())
+                .collect::<Vec<_>>()
+                .join(","),
+            "catalog.configured"
+        );
         catalog.mark_all_except(&selectable, Availability::Unavailable);
-        catalog.mark_providers(&selectable, Availability::Available);
+        for provider in &selectable {
+            if ExecutionMode::from_provider(*provider) == ExecutionMode::Cloud {
+                catalog.mark_providers(&[*provider], Availability::Available);
+            }
+        }
+        for provider in &selectable {
+            if !provider.is_local() {
+                continue;
+            }
+            match discover_installed(factory.as_ref(), *provider) {
+                Ok(installed) => {
+                    tracing::info!(
+                        provider = %provider,
+                        installed = installed.join(","),
+                        "catalog.discovered"
+                    );
+                    catalog.ingest_names(*provider, &installed);
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        provider = %provider,
+                        error_kind = err.kind(),
+                        "catalog.discovery_failed"
+                    );
+                    catalog.mark_providers(&[*provider], Availability::Unavailable);
+                }
+            }
+        }
+        tracing::info!(
+            available = catalog.ids_with(Availability::Available).join(","),
+            unavailable = catalog.ids_with(Availability::Unavailable).join(","),
+            "catalog.effective"
+        );
         AiClient {
             config,
             router: Router::new(self.routing_policy).with_catalog(catalog),
@@ -217,6 +263,49 @@ impl AiClientBuilder {
             budgets: std::sync::Arc::new(Mutex::new(crate::config::BudgetLedger::default())),
         }
     }
+}
+
+fn discover_installed(
+    factory: &dyn LlmFactory,
+    provider: Provider,
+) -> crate::error::Result<Vec<String>> {
+    let probe = ModelTarget {
+        provider,
+        model: "probe".into(),
+        id: ModelId::new(provider, "probe"),
+    };
+    let client = factory.client_for(&probe)?;
+    let configured = client.config().model().to_string();
+    let client_for_list = client.clone();
+    let infos = block_on_discovery(async move { client_for_list.list_models().await })?;
+    let mut names: Vec<String> = infos
+        .into_iter()
+        .filter(|info| info.provider == provider)
+        .map(|info| info.id)
+        .collect();
+    if !configured.is_empty() && configured != "probe" && !names.iter().any(|n| n == &configured) {
+        names.push(configured);
+    }
+    Ok(names)
+}
+
+fn block_on_discovery<T, F>(fut: F) -> T
+where
+    T: Send + 'static,
+    F: std::future::Future<Output = T> + Send + 'static,
+{
+    std::thread::Builder::new()
+        .name("binder-ai-discovery".into())
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("discovery runtime")
+                .block_on(fut)
+        })
+        .expect("discovery thread")
+        .join()
+        .expect("discovery join")
 }
 
 fn default_provider_settings() -> HashMap<Provider, ProviderSettings> {
