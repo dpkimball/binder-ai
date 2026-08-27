@@ -22,7 +22,7 @@ all-providers = ["ollama", "openai", "anthropic", "xai", "gemini"]
 
 [dependencies]
 async-trait = "0.1"
-binder-llm = { version = "0.1.0", path = "../binder-llm", registry = "dpk", default-features = false }
+binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

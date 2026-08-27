@@ -16,6 +16,5 @@ jobs:
     uses: dpkimball/dpk-ci/.github/workflows/rust-library-ci.yml@master
     with:
       project_name: binder-ai
-      path_dep_repo: binder-llm
       runner: product-ci
     secrets: inherit
