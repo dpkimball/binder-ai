@@ -4,15 +4,20 @@
 
 ```mermaid
 flowchart TD
-  apps["binder-server / binder-cloud / binder-desktop / binder-cli"]
+  apps["binder-server / binder-cloud / binder-desktop / binder-cli / Repository Hygiene"]
   ai["binder-ai AiClient"]
   runtime["binder-ai Runtime"]
+  hygiene["HygieneEngine dispatcher"]
   wf["IssueImplementationWorkflow"]
   catalog["Model Catalog"]
   selector["ModelSelector"]
   llm["binder-llm LlmClient"]
   providers["Ollama / OpenAI / Anthropic / xAI / Gemini"]
   env["files / git / cargo / search"]
+  apps --> hygiene
+  hygiene --> runtime
+  hygiene -->|"Rust source findings"| wf
+  hygiene -->|"fmt / clippy --fix / badges / branch -d"| runtime
   apps --> ai
   apps --> runtime
   apps --> wf
@@ -67,3 +72,13 @@ The router never scores the raw configured catalog. Unavailable models are not s
 ## IssueImplementationWorkflow
 
 Concrete sequence, not a framework: search and read via `Runtime` → plan JSON via `AiClient` → file edits via `AiClient` → `write_file` → `cargo fmt` / `cargo test` via structured `Command` → `git_diff`. Tests use `MemoryRuntime` and `MockAiClient`.
+
+## HygieneEngine
+
+Repository Hygiene inspects dashboards, branches, PRs, CI, cargo, and git **without** AI. It classifies typed `Finding`s, then `HygieneEngine` dispatches:
+
+- Deterministic: `git branch -d`, `cargo fmt`, `cargo clippy --fix`, README CI badge
+- Report-only: dirty trees, open PRs, broken pipelines, stale branches, unknown, non-Rust projects
+- AI (`AutoRemediation::RustImplementation` only): missing tests, Rust bugs, rustdoc in `.rs` files on Cargo projects → `IssueImplementationWorkflow`
+
+Production construction is `AiClient::builder().routing_policy(RoutingPolicy::LocalOnly).build()` (default catalog discovery, no hardcoded model) plus `LocalRuntime` rooted at the inspected repo. Hygiene validates workflow success, fmt, tests, and a non-empty git diff. Failures are recorded with no retry; remaining repositories continue. The engine never commits, merges, pushes, or opens a PR.

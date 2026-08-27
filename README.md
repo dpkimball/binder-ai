@@ -16,6 +16,7 @@ Binder's AI orchestration layer.
 - Semantic retries, token budgets, cost estimates, tracing metadata
 - `Runtime` for files, search, structured commands, and git (not LLM providers)
 - `IssueImplementationWorkflow` for a single concrete issue → plan → edit → fmt → test → diff path
+- `HygieneEngine` for optional Rust source remediation from deterministic repository findings (inspection stays outside this crate)
 
 HTTP, provider SDKs, authentication, and request mapping stay in `binder-llm`.
 
@@ -115,6 +116,23 @@ let _fmt = runtime.execute(Command::new("cargo").arg("fmt")).await?;
 ```
 
 `MemoryRuntime` is for tests (in-memory files, scripted commands). `LocalRuntime::new(".")` is the development implementation.
+
+Repository Hygiene inspects repos deterministically. When a finding needs Rust source changes, it dispatches to `IssueImplementationWorkflow` through `HygieneEngine`. Inspection itself is not AI-driven. Production AI remediation uses default catalog discovery and `LocalOnly` routing:
+
+```rust
+use binder_ai::{AiClient, Finding, FindingKind, HygieneConfig, HygieneEngine, LocalRuntime, RoutingPolicy};
+
+# async fn hygiene(findings: Vec<Finding>) {
+let ai = AiClient::builder()
+    .routing_policy(RoutingPolicy::LocalOnly)
+    .build();
+let runtime = LocalRuntime::new(".").expect("workspace");
+let engine = HygieneEngine::new(HygieneConfig::default(), ai);
+let _report = engine.process_findings(runtime, &findings).await;
+# }
+```
+
+The workflow git diff is the output. Hygiene never commits, merges, pushes, or opens a PR.
 
 ## Develop
 
