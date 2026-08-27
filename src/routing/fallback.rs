@@ -16,9 +16,7 @@ impl FallbackChain {
 
     pub fn try_from_targets(targets: Vec<ModelTarget>) -> Result<Self> {
         if targets.is_empty() {
-            return Err(AiError::routing(
-                "no providers available for this routing policy",
-            ));
+            return Err(AiError::NoEligibleModel);
         }
         Ok(Self { targets })
     }

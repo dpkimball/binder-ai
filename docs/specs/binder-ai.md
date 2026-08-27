@@ -1,6 +1,7 @@
 # binder-ai
 
 github_issue: https://github.com/dpkimball/binder-ai/issues/1
+github_issue_catalog: https://github.com/dpkimball/binder-ai/issues/3
 
 Binder's AI orchestration layer. Applications never call `binder-llm` directly. All AI traffic flows through `AiClient`.
 
@@ -9,7 +10,11 @@ Binder's AI orchestration layer. Applications never call `binder-llm` directly. 
 ## In scope
 
 - Task-oriented API: `chat`, `chat_json`, `execute`, `summarize`, `classify`, `extract`, `embeddings`, `complete`, `plan`
-- Policy routing (`BestQuality`, `Fastest`, `LowestCost`, `LocalOnly`, `CloudOnly`, `Balanced`) and configurable fallback
+- Data-driven model catalog (`ModelDescriptor`, capabilities, cost class, quality hints, availability)
+- Capability-aware routing (`ExecutionPolicy`: `LocalOnly`, `PreferLocal`, `LowestCost`, `Balanced`, `BestQuality`, `CloudOnly`, `FreeFirst`, `Private`)
+- Deterministic `ModelSelector` with policy-driven fallback (no per-model name branches)
+- Ollama discovery via `binder-llm` `list_models` (`AiClient::refresh_catalog`)
+- User catalog overrides (TOML)
 - Versioned prompt registry and composable context builders
 - Abstract conversation storage
 - Tool registry + executor (provider-neutral loop)
@@ -20,8 +25,10 @@ Binder's AI orchestration layer. Applications never call `binder-llm` directly. 
 
 HTTP / provider SDKs / auth / request mapping / REST APIs (those are `binder-llm`).
 
-Deferred: multi-agent orchestration, planning graphs, workflow execution, MCP, RAG, long-term memory, knowledge graphs, evaluation, A/B prompts, human approval.
+Deferred: automatic Ollama pulls, live quality benchmarks, autonomous paid-model escalation, electricity cost, GPU scheduling, multi-agent graphs, MCP, RAG, long-term memory, evaluation, A/B prompts, human approval.
 
 ## Swap contract
 
-Consumers express **intent** (`Task`, named prompts, routing policy). They do not select providers or models unless they explicitly override configuration.
+Consumers express **intent** (`Task` / `AiTask`, named prompts, `ExecutionPolicy`, optional `max_cost`). They do not select providers or models unless they explicitly override configuration.
+
+`LocalOnly` and `Private` never select a cloud model. An explicit `max_cost` is never silently exceeded (`AiError::NoEligibleModel`).

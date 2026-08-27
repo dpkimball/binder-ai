@@ -38,6 +38,25 @@ impl From<Provider> for ProviderCostKind {
 
 /// Rough per-million-token rates. Operators may replace this; it is not a price sheet.
 pub fn estimate_cost(provider: Provider, usage: Usage) -> CostEstimate {
+    estimate_cost_for(provider, usage, None)
+}
+
+/// Prefer catalog rates when present; unknown pricing must not break routing.
+pub fn estimate_cost_for(
+    provider: Provider,
+    usage: Usage,
+    pricing: Option<crate::models::Pricing>,
+) -> CostEstimate {
+    if let Some(pricing) = pricing {
+        if let Some(usd) = pricing.estimate_usd(usage.prompt_tokens, usage.completion_tokens) {
+            return CostEstimate {
+                usd,
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                provider: Some(provider.into()),
+            };
+        }
+    }
     let (in_rate, out_rate) = match provider {
         Provider::Ollama => (0.0, 0.0),
         Provider::Openai => (2.0, 8.0),
@@ -87,11 +106,19 @@ impl AiMetrics {
     }
 }
 
-pub fn trace_start(task: TaskKind, policy: &str, model: &str) {
+pub fn trace_start(
+    task: TaskKind,
+    policy: &str,
+    selected_model: &str,
+    provider: Provider,
+    execution_mode: crate::models::ExecutionMode,
+) {
     tracing::info!(
         task = %task,
         policy = policy,
-        model = model,
+        selected_model = selected_model,
+        provider = %provider,
+        execution_mode = ?execution_mode,
         "ai.request.start"
     );
 }
@@ -100,23 +127,28 @@ pub fn trace_start(task: TaskKind, policy: &str, model: &str) {
 pub fn trace_ok(
     task: TaskKind,
     provider: Provider,
-    model: &str,
+    selected_model: &str,
+    execution_mode: crate::models::ExecutionMode,
+    policy: &str,
     latency_ms: u128,
-    fallbacks: u32,
+    fallback_count: u32,
     tool_rounds: u32,
     usage: Usage,
-    cost_usd: f64,
+    estimated_cost: f64,
 ) {
     tracing::info!(
         task = %task,
+        selected_model = selected_model,
         provider = %provider,
-        model = model,
+        execution_mode = ?execution_mode,
+        policy = policy,
+        fallback_count,
+        estimated_cost,
         latency_ms = latency_ms as u64,
-        fallbacks,
-        tool_rounds,
+        tokens = usage.total_tokens,
         prompt_tokens = usage.prompt_tokens,
         completion_tokens = usage.completion_tokens,
-        estimated_cost_usd = cost_usd,
+        tool_rounds,
         "ai.request.ok"
     );
 }

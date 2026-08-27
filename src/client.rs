@@ -9,15 +9,16 @@ use crate::config::{AiConfig, BudgetLedger};
 use crate::context::ContextBuilder;
 use crate::conversation::{Conversation, ConversationStore};
 use crate::error::{AiError, Result};
+use crate::models::{Availability, ExecutionMode, ModelCatalog, ModelId, ModelRequirements};
 use crate::prompt::manager::PromptManager;
 use crate::prompt::PromptRef;
 use crate::providers::LlmFactory;
 use crate::request::AiRequest;
-use crate::response::{AiResponse, ExecutionTrace};
+use crate::response::{AiResponse, AiUsage, ExecutionTrace};
 use crate::routing::{ModelTarget, Router};
 use crate::session::{SessionId, UserId, WorkflowId};
 use crate::task::{Task, TaskKind};
-use crate::telemetry::{estimate_cost, trace_err, trace_ok, trace_start, AiMetrics};
+use crate::telemetry::{estimate_cost_for, trace_err, trace_ok, trace_start, AiMetrics};
 use crate::tools::{ToolExecutor, ToolRegistry};
 use binder_llm::{
     ChatMessage, ChatRequest, ChatResponse, EmbeddingInput, EmbeddingRequest, EmbeddingResponse,
@@ -53,8 +54,12 @@ impl AiClient {
         self.metrics.lock().map(|m| m.clone()).unwrap_or_default()
     }
 
-    pub async fn chat(&self, request: AiRequest) -> Result<AiResponse> {
-        self.dispatch(request).await
+    pub fn catalog(&self) -> &ModelCatalog {
+        self.router.catalog()
+    }
+
+    pub async fn chat(&self, request: impl Into<AiRequest>) -> Result<AiResponse> {
+        self.dispatch(request.into()).await
     }
 
     pub async fn chat_json<T: DeserializeOwned>(&self, mut request: AiRequest) -> Result<T> {
@@ -64,8 +69,8 @@ impl AiClient {
             .map_err(|e| AiError::json(format!("assistant content is not valid JSON: {e}"), 1))
     }
 
-    pub async fn execute(&self, task: Task) -> Result<AiResponse> {
-        self.dispatch(AiRequest::from_task(task)).await
+    pub async fn execute(&self, request: impl Into<AiRequest>) -> Result<AiResponse> {
+        self.dispatch(request.into()).await
     }
 
     pub async fn summarize(&self, document: impl Into<String>) -> Result<AiResponse> {
@@ -121,14 +126,12 @@ impl AiClient {
             }
         }
         let request = AiRequest::new(TaskKind::Embedding, cache_key.clone());
-        let available = self.available();
-        let chain = self.router.route(
-            TaskKind::Embedding,
-            None,
-            self.config.preferred_provider,
-            self.config.preferred_model(TaskKind::Embedding),
-            &available,
-        )?;
+        let mut requirements = request.requirements(self.router.catalog());
+        if request.policy.is_none() {
+            requirements.execution_policy = self.config.routing_policy;
+        }
+        self.apply_config_preferences(&mut requirements, TaskKind::Embedding);
+        let chain = self.router.route(TaskKind::Embedding, &requirements)?;
         let mut last_err = AiError::routing("embedding failed");
         for target in chain.iter() {
             match self.embed_on(target, &input).await {
@@ -161,7 +164,6 @@ impl AiClient {
 
     async fn dispatch(&self, request: AiRequest) -> Result<AiResponse> {
         let started = Instant::now();
-        let policy = request.policy.unwrap_or(self.config.routing_policy);
         let prompt_ref = request
             .prompt
             .clone()
@@ -187,20 +189,22 @@ impl AiClient {
             .map_err(|_| AiError::budget("budget ledger poisoned"))?
             .check_request(&self.config.token_budget, request.input.len() as u32 / 4)?;
 
-        let available = self.available();
-        let override_model = request
-            .override_model
-            .as_deref()
-            .or_else(|| self.config.preferred_model(request.task));
-        let chain = self.router.route(
-            request.task,
-            request.policy,
-            request.override_provider.or(self.config.preferred_provider),
-            override_model,
-            &available,
-        )?;
+        let mut requirements = request.requirements(self.router.catalog());
+        if request.policy.is_none() {
+            requirements.execution_policy = self.config.routing_policy;
+        }
+        self.apply_config_preferences(&mut requirements, request.task);
+        let policy = requirements.execution_policy;
+        let chain = self.router.route(request.task, &requirements)?;
 
-        trace_start(request.task, policy.as_str(), &chain.primary().model);
+        let primary = chain.primary();
+        trace_start(
+            request.task,
+            policy.as_str(),
+            primary.id.as_str(),
+            primary.provider,
+            ExecutionMode::from_provider(primary.provider),
+        );
 
         let history = self.load_history(&request)?;
         let context = ContextBuilder::new()
@@ -236,7 +240,9 @@ impl AiClient {
                     trace_ok(
                         request.task,
                         response.execution.provider,
-                        &response.execution.model,
+                        &response.execution.model_id,
+                        response.execution.execution_mode,
+                        &response.execution.policy,
                         started.elapsed().as_millis(),
                         response.fallbacks,
                         response.tool_rounds,
@@ -288,6 +294,15 @@ impl AiClient {
         mut messages: Vec<ChatMessage>,
         _prompt_version: u32,
     ) -> Result<AiResponse> {
+        let mode = ExecutionMode::from_provider(target.provider);
+        if request
+            .policy
+            .unwrap_or(self.config.routing_policy)
+            .is_private()
+            && mode == ExecutionMode::Cloud
+        {
+            return Err(AiError::LocalExecutionRequired);
+        }
         let client = self.factory.client_for(target)?;
         let mut tool_rounds = 0;
         let mut usage = Usage::default();
@@ -365,7 +380,9 @@ impl AiClient {
         }
 
         let response = last.ok_or_else(|| AiError::routing("empty model response"))?;
-        let cost = estimate_cost(target.provider, usage);
+        let pricing = self.router.catalog().get(&target.id).map(|m| m.pricing);
+        let cost = estimate_cost_for(target.provider, usage, pricing);
+        let mode = ExecutionMode::from_provider(target.provider);
         Ok(AiResponse {
             content: response.message.content().to_string(),
             task: request.task,
@@ -380,27 +397,57 @@ impl AiClient {
             execution: ExecutionTrace {
                 provider: target.provider,
                 model: target.model.clone(),
+                model_id: target.id.to_string(),
                 policy: String::new(),
+                execution_mode: mode,
+            },
+            ai_usage: AiUsage {
+                provider: target.provider,
+                model: target.id.clone(),
+                prompt_tokens: Some(u64::from(usage.prompt_tokens)),
+                completion_tokens: Some(u64::from(usage.completion_tokens)),
+                estimated_cost: Some(cost.usd),
+                execution_mode: mode,
+                latency: response.latency,
             },
         })
     }
 
-    fn available(&self) -> Vec<Provider> {
-        if let Some(forced) = &self.available_providers {
-            return forced.clone();
+    fn apply_config_preferences(&self, req: &mut ModelRequirements, task: TaskKind) {
+        if let Some(model) = self.config.preferred_model(task) {
+            req.preferred_models.push(ModelId::from(model));
         }
-        let mut providers = self.config.available_providers();
-        if !self.config.fallback_order.is_empty() {
-            providers.retain(|p| self.config.fallback_order.contains(p));
-            let mut ordered = Vec::new();
-            for p in &self.config.fallback_order {
-                if providers.contains(p) {
-                    ordered.push(*p);
-                }
+    }
+
+    /// Refresh local Ollama availability via `binder-llm` `list_models`. No HTTP here.
+    pub async fn refresh_catalog(&mut self) -> Result<()> {
+        if self
+            .available_providers
+            .as_ref()
+            .is_some_and(|providers| !providers.contains(&Provider::Ollama))
+        {
+            return Ok(());
+        }
+        let probe = ModelTarget {
+            provider: Provider::Ollama,
+            model: "probe".into(),
+            id: ModelId::new(Provider::Ollama, "probe"),
+        };
+        let client = self.factory.client_for(&probe)?;
+        match client.list_models().await {
+            Ok(infos) => {
+                self.router
+                    .catalog_mut()
+                    .ingest_discovered(Provider::Ollama, &infos);
+                Ok(())
             }
-            return ordered;
+            Err(err) => {
+                self.router
+                    .catalog_mut()
+                    .mark_providers(&[Provider::Ollama], Availability::Unavailable);
+                Err(err.into())
+            }
         }
-        providers
     }
 
     fn load_history(&self, request: &AiRequest) -> Result<Vec<ChatMessage>> {
@@ -494,7 +541,10 @@ fn cached_response(task: TaskKind, content: String, name: String, version: u32) 
         execution: ExecutionTrace {
             provider: Provider::Ollama,
             model: "cache".into(),
+            model_id: "cache".into(),
             policy: "cache".into(),
+            execution_mode: ExecutionMode::Local,
         },
+        ai_usage: AiUsage::default(),
     }
 }

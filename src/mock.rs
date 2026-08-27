@@ -49,6 +49,11 @@ impl ScriptedProvider {
         self
     }
 
+    pub fn with_models(self, models: Vec<ModelInfo>) -> Self {
+        self.inner.lock().expect("scripted mutex").models = models;
+        self
+    }
+
     pub fn chat_calls(&self) -> u32 {
         self.inner.lock().expect("scripted mutex").chat_calls
     }

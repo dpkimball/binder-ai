@@ -30,6 +30,9 @@ pub enum Task {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         language: Option<String>,
     },
+    CodeReview {
+        diff: String,
+    },
     ArchitectureReview {
         repository: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -63,6 +66,7 @@ pub enum TaskKind {
     Planning,
     IssuePlanning,
     CodeGeneration,
+    CodeReview,
     ArchitectureReview,
     Refactoring,
     Reasoning,
@@ -80,6 +84,7 @@ impl Task {
             Self::Planning { .. } => TaskKind::Planning,
             Self::IssuePlanning { .. } => TaskKind::IssuePlanning,
             Self::CodeGeneration { .. } => TaskKind::CodeGeneration,
+            Self::CodeReview { .. } => TaskKind::CodeReview,
             Self::ArchitectureReview { .. } => TaskKind::ArchitectureReview,
             Self::Refactoring { .. } => TaskKind::Refactoring,
             Self::Reasoning { .. } => TaskKind::Reasoning,
@@ -109,6 +114,7 @@ impl Task {
                 Some(lang) => format!("Language: {lang}\n\n{spec}"),
                 None => spec.clone(),
             },
+            Self::CodeReview { diff } => diff.clone(),
             Self::ArchitectureReview {
                 repository,
                 pull_request,
@@ -140,6 +146,7 @@ impl TaskKind {
             Self::Planning => "planning",
             Self::IssuePlanning => "issue_planning",
             Self::CodeGeneration => "code_generation",
+            Self::CodeReview => "code_review",
             Self::ArchitectureReview => "architecture_review",
             Self::Refactoring => "refactoring",
             Self::Reasoning => "reasoning",
@@ -153,6 +160,7 @@ impl TaskKind {
         match self {
             Self::ArchitectureReview => "architecture-review",
             Self::CodeGeneration => "code-generation",
+            Self::CodeReview => "code-review",
             Self::IssuePlanning => "issue-planning",
             other => other.as_str(),
         }
@@ -170,6 +178,7 @@ impl TaskKind {
             self,
             Self::ArchitectureReview
                 | Self::CodeGeneration
+                | Self::CodeReview
                 | Self::Refactoring
                 | Self::IssuePlanning
         )

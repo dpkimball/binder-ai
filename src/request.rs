@@ -3,7 +3,8 @@ use serde_json::Value;
 
 use crate::context::ContextSource;
 use crate::conversation::ConversationId;
-use crate::policy::RoutingPolicy;
+use crate::models::{CostClass, ModelCatalog, ModelId, ModelRequirements};
+use crate::policy::ExecutionPolicy;
 use crate::prompt::PromptRef;
 use crate::session::SessionId;
 use crate::task::{Task, TaskKind};
@@ -23,7 +24,7 @@ pub struct AiRequest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub context: Vec<ContextSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub policy: Option<RoutingPolicy>,
+    pub policy: Option<ExecutionPolicy>,
     #[serde(default)]
     pub json_mode: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -32,11 +33,23 @@ pub struct AiRequest {
     pub override_provider: Option<Provider>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub override_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefer_model: Option<ModelId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_override: Option<ModelId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_cost: Option<CostClass>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_tokens: Option<u64>,
     #[serde(default)]
     pub use_tools: bool,
 }
 
 impl AiRequest {
+    pub fn builder() -> AiRequestBuilder {
+        AiRequestBuilder::default()
+    }
+
     pub fn new(task: TaskKind, input: impl Into<String>) -> Self {
         Self {
             json_mode: task.wants_json(),
@@ -51,6 +64,10 @@ impl AiRequest {
             json_schema: None,
             override_provider: None,
             override_model: None,
+            prefer_model: None,
+            model_override: None,
+            max_cost: None,
+            context_tokens: None,
         }
     }
 
@@ -101,7 +118,7 @@ impl AiRequest {
         self
     }
 
-    pub fn with_policy(mut self, policy: RoutingPolicy) -> Self {
+    pub fn with_policy(mut self, policy: ExecutionPolicy) -> Self {
         self.policy = Some(policy);
         self
     }
@@ -114,5 +131,95 @@ impl AiRequest {
     pub fn with_override_provider(mut self, provider: Provider) -> Self {
         self.override_provider = Some(provider);
         self
+    }
+
+    pub fn requirements(&self, catalog: &ModelCatalog) -> ModelRequirements {
+        let mut req = ModelRequirements::for_task(self.task, catalog);
+        if let Some(policy) = self.policy {
+            req.execution_policy = policy;
+        }
+        req.max_cost = self.max_cost.or(req.max_cost);
+        req.context_tokens = self.context_tokens;
+        if let Some(id) = &self.prefer_model {
+            req.preferred_models.push(id.clone());
+        }
+        if let Some(id) = &self.model_override {
+            req.model_override = Some(id.clone());
+        } else if let (Some(provider), Some(model)) =
+            (self.override_provider, self.override_model.as_deref())
+        {
+            req.model_override = Some(ModelId::new(provider, model));
+        } else if let Some(model) = self.override_model.as_deref() {
+            if let Ok(id) = model.parse() {
+                req.model_override = Some(id);
+            }
+        } else if let Some(provider) = self.override_provider {
+            req.excluded_models.extend(
+                catalog
+                    .models()
+                    .iter()
+                    .filter(|m| m.provider != provider)
+                    .map(|m| m.id.clone()),
+            );
+        }
+        req
+    }
+}
+
+impl From<Task> for AiRequest {
+    fn from(task: Task) -> Self {
+        Self::from_task(task)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AiRequestBuilder {
+    task: Option<TaskKind>,
+    input: String,
+    policy: Option<ExecutionPolicy>,
+    max_cost: Option<CostClass>,
+    prefer_model: Option<ModelId>,
+    model_override: Option<ModelId>,
+}
+
+impl AiRequestBuilder {
+    pub fn task(mut self, task: TaskKind) -> Self {
+        self.task = Some(task);
+        self
+    }
+
+    pub fn input(mut self, input: impl Into<String>) -> Self {
+        self.input = input.into();
+        self
+    }
+
+    pub fn policy(mut self, policy: ExecutionPolicy) -> Self {
+        self.policy = Some(policy);
+        self
+    }
+
+    pub fn max_cost(mut self, max: CostClass) -> Self {
+        self.max_cost = Some(max);
+        self
+    }
+
+    pub fn prefer_model(mut self, id: impl Into<ModelId>) -> Self {
+        self.prefer_model = Some(id.into());
+        self
+    }
+
+    pub fn model_override(mut self, id: impl Into<ModelId>) -> Self {
+        self.model_override = Some(id.into());
+        self
+    }
+
+    pub fn build(self) -> AiRequest {
+        let task = self.task.unwrap_or(TaskKind::Conversation);
+        let mut request = AiRequest::new(task, self.input);
+        request.policy = self.policy;
+        request.max_cost = self.max_cost;
+        request.prefer_model = self.prefer_model;
+        request.model_override = self.model_override;
+        request
     }
 }

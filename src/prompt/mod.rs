@@ -130,6 +130,11 @@ fn builtin_prompts() -> Vec<PromptVersion> {
             template: "Write the requested code. Prefer small, compilable changes.\n\n{input}".into(),
         },
         PromptVersion {
+            name: "code-review".into(),
+            version: 1,
+            template: "Review the following diff. List defects, risks, and missing tests.\n\n{input}".into(),
+        },
+        PromptVersion {
             name: "architecture-review".into(),
             version: 1,
             template: "Review architecture. List risks and recommendations.\n\n{input}".into(),

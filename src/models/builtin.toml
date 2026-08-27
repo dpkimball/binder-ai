@@ -1,0 +1,223 @@
+# Builtin catalog. Routing matches capabilities and prefixes, not hardcoded model names.
+
+[[profiles]]
+provider = "ollama"
+model_prefix = "qwen3-coder"
+capabilities = { chat = true, coding = true, reasoning = true, planning = false, tools = true, structured_output = true, streaming = true, embeddings = false, vision = false, audio = false, long_context = false }
+quality = { general = 4, coding = 5, reasoning = 4, tool_use = 4 }
+cost_class = "free"
+
+[[profiles]]
+provider = "ollama"
+model_prefix = "qwen"
+capabilities = { chat = true, coding = true, reasoning = true, planning = false, tools = true, structured_output = true, streaming = true }
+quality = { general = 4, coding = 4, reasoning = 3, tool_use = 4 }
+cost_class = "free"
+
+[[profiles]]
+provider = "ollama"
+model_prefix = "deepseek"
+capabilities = { chat = true, coding = true, reasoning = true, planning = true, tools = true, structured_output = true, streaming = true }
+quality = { general = 4, coding = 4, reasoning = 5, tool_use = 3 }
+cost_class = "free"
+
+[[profiles]]
+provider = "ollama"
+model_prefix = "mistral"
+capabilities = { chat = true, coding = false, reasoning = true, planning = false, tools = false, structured_output = true, streaming = true }
+quality = { general = 4, coding = 2, reasoning = 3, tool_use = 2 }
+cost_class = "free"
+
+[[profiles]]
+provider = "ollama"
+model_prefix = "gpt-oss"
+capabilities = { chat = true, coding = true, reasoning = true, planning = true, tools = true, structured_output = true, streaming = true }
+quality = { general = 4, coding = 4, reasoning = 4, tool_use = 3 }
+cost_class = "free"
+
+[[profiles]]
+provider = "ollama"
+model_prefix = "llama"
+capabilities = { chat = true, coding = false, reasoning = true, streaming = true }
+quality = { general = 3, coding = 2, reasoning = 3, tool_use = 2 }
+cost_class = "free"
+
+[[profiles]]
+provider = "ollama"
+model_prefix = "nomic-embed"
+capabilities = { chat = false, embeddings = true }
+quality = { general = 3, coding = 0, reasoning = 0, tool_use = 0 }
+cost_class = "free"
+
+[[models]]
+key = "qwen-coder"
+provider = "ollama"
+model = "qwen3-coder:30b"
+execution = "local"
+context_window = 32768
+capabilities = { chat = true, coding = true, reasoning = true, tools = true, structured_output = true, streaming = true }
+quality = { general = 4, coding = 5, reasoning = 4, tool_use = 4 }
+cost_class = "free"
+
+[[models]]
+key = "deepseek-reasoning"
+provider = "ollama"
+model = "deepseek-r1:32b"
+execution = "local"
+capabilities = { chat = true, coding = true, reasoning = true, planning = true, tools = true, structured_output = true, streaming = true }
+quality = { general = 4, coding = 4, reasoning = 5, tool_use = 3 }
+cost_class = "free"
+
+[[models]]
+key = "mistral-general"
+provider = "ollama"
+model = "mistral-small"
+execution = "local"
+capabilities = { chat = true, structured_output = true, streaming = true, reasoning = true }
+quality = { general = 4, coding = 2, reasoning = 3, tool_use = 2 }
+cost_class = "free"
+
+[[models]]
+key = "gpt-oss"
+provider = "ollama"
+model = "gpt-oss:20b"
+execution = "local"
+capabilities = { chat = true, coding = true, reasoning = true, planning = true, tools = true, structured_output = true, streaming = true }
+quality = { general = 4, coding = 4, reasoning = 4, tool_use = 3 }
+cost_class = "free"
+
+[[models]]
+key = "nomic-embed"
+provider = "ollama"
+model = "nomic-embed-text"
+execution = "local"
+capabilities = { embeddings = true }
+quality = { general = 3 }
+cost_class = "free"
+
+[[models]]
+key = "openai-gpt"
+provider = "openai"
+model = "gpt-4.1"
+execution = "cloud"
+context_window = 1047576
+capabilities = { chat = true, coding = true, reasoning = true, planning = true, tools = true, structured_output = true, streaming = true, long_context = true }
+quality = { general = 5, coding = 5, reasoning = 4, tool_use = 5 }
+cost_class = "medium"
+input_per_million = 2.0
+output_per_million = 8.0
+
+[[models]]
+key = "openai-embed"
+provider = "openai"
+model = "text-embedding-3-small"
+execution = "cloud"
+capabilities = { embeddings = true }
+quality = { general = 4 }
+cost_class = "low"
+input_per_million = 0.02
+
+[[models]]
+key = "anthropic-sonnet"
+provider = "anthropic"
+model = "claude-sonnet-4-5"
+execution = "cloud"
+context_window = 200000
+capabilities = { chat = true, coding = true, reasoning = true, planning = true, tools = true, structured_output = true, streaming = true, long_context = true }
+quality = { general = 5, coding = 5, reasoning = 5, tool_use = 5 }
+cost_class = "high"
+input_per_million = 3.0
+output_per_million = 15.0
+
+[[models]]
+key = "gemini-flash"
+provider = "gemini"
+model = "gemini-2.5-flash"
+execution = "cloud"
+capabilities = { chat = true, coding = true, reasoning = true, structured_output = true, streaming = true }
+quality = { general = 4, coding = 3, reasoning = 4, tool_use = 3 }
+cost_class = "low"
+input_per_million = 0.25
+output_per_million = 1.0
+
+[[models]]
+key = "gemini-pro"
+provider = "gemini"
+model = "gemini-2.5-pro"
+execution = "cloud"
+context_window = 1048576
+capabilities = { chat = true, coding = true, reasoning = true, planning = true, tools = true, structured_output = true, streaming = true, long_context = true }
+quality = { general = 5, coding = 4, reasoning = 5, tool_use = 4 }
+cost_class = "medium"
+input_per_million = 1.25
+output_per_million = 10.0
+
+[[models]]
+key = "xai-grok"
+provider = "xai"
+model = "grok-3"
+execution = "cloud"
+capabilities = { chat = true, coding = true, reasoning = true, tools = true, structured_output = true, streaming = true }
+quality = { general = 4, coding = 4, reasoning = 4, tool_use = 4 }
+cost_class = "medium"
+input_per_million = 2.0
+output_per_million = 8.0
+
+[task_defaults.summarization]
+policy = "lowest_cost"
+required = ["chat"]
+
+[task_defaults.classification]
+policy = "lowest_cost"
+required = ["chat", "structured_output"]
+
+[task_defaults.extraction]
+policy = "lowest_cost"
+required = ["chat", "structured_output"]
+
+[task_defaults.planning]
+policy = "balanced"
+required = ["chat", "reasoning"]
+min_quality = 3
+
+[task_defaults.issue_planning]
+policy = "balanced"
+required = ["chat", "reasoning", "planning"]
+min_quality = 3
+
+[task_defaults.code_generation]
+policy = "prefer_local"
+required = ["chat", "coding"]
+preferred_prefixes = ["qwen3-coder", "qwen"]
+min_quality = 3
+
+[task_defaults.refactoring]
+policy = "prefer_local"
+required = ["chat", "coding"]
+preferred_prefixes = ["qwen3-coder", "qwen"]
+
+[task_defaults.code_review]
+policy = "prefer_local"
+required = ["chat", "coding"]
+
+[task_defaults.architecture_review]
+policy = "best_quality"
+required = ["chat", "reasoning"]
+min_quality = 4
+
+[task_defaults.reasoning]
+policy = "balanced"
+required = ["chat", "reasoning"]
+min_quality = 3
+
+[task_defaults.conversation]
+policy = "balanced"
+required = ["chat"]
+
+[task_defaults.embedding]
+policy = "prefer_local"
+required = ["embeddings"]
+
+[task_defaults.moderation]
+policy = "lowest_cost"
+required = ["chat", "structured_output"]

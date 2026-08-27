@@ -1,28 +1,28 @@
 mod fallback;
 mod selector;
-mod strategy;
 
 pub use fallback::FallbackChain;
-pub use selector::{ModelCatalog, ModelTarget};
-pub use strategy::RoutingStrategy;
+pub use selector::{CatalogSelector, ModelSelection, ModelSelector, ModelTarget};
 
 use crate::error::Result;
-use crate::policy::RoutingPolicy;
+use crate::models::{ModelCatalog, ModelRequirements};
+use crate::policy::ExecutionPolicy;
 use crate::task::TaskKind;
-use binder_llm::Provider;
 
-/// Policy router. Selects a primary target and an ordered fallback list.
+/// Policy router. Selection is catalog + capabilities, not vendor name tables.
 #[derive(Debug, Clone)]
 pub struct Router {
-    strategy: RoutingStrategy,
+    policy: ExecutionPolicy,
     catalog: ModelCatalog,
+    selector: CatalogSelector,
 }
 
 impl Router {
-    pub fn new(policy: RoutingPolicy) -> Self {
+    pub fn new(policy: ExecutionPolicy) -> Self {
         Self {
-            strategy: RoutingStrategy::from_policy(policy),
+            policy,
             catalog: ModelCatalog::builtin(),
+            selector: CatalogSelector::new(),
         }
     }
 
@@ -31,38 +31,26 @@ impl Router {
         self
     }
 
-    pub fn policy(&self) -> RoutingPolicy {
-        self.strategy.policy()
+    pub fn catalog(&self) -> &ModelCatalog {
+        &self.catalog
     }
 
-    pub fn route(
-        &self,
-        task: TaskKind,
-        policy_override: Option<RoutingPolicy>,
-        override_provider: Option<Provider>,
-        override_model: Option<&str>,
-        available: &[Provider],
-    ) -> Result<FallbackChain> {
-        if let (Some(provider), Some(model)) = (override_provider, override_model) {
-            return Ok(FallbackChain::single(ModelTarget {
-                provider,
-                model: model.to_string(),
-            }));
-        }
-        let policy = policy_override.unwrap_or(self.strategy.policy());
-        let strategy = RoutingStrategy::from_policy(policy);
-        strategy.select(
-            task,
-            override_provider,
-            override_model,
-            available,
-            &self.catalog,
-        )
+    pub fn catalog_mut(&mut self) -> &mut ModelCatalog {
+        &mut self.catalog
+    }
+
+    pub fn policy(&self) -> ExecutionPolicy {
+        self.policy
+    }
+
+    pub fn route(&self, task: TaskKind, requirements: &ModelRequirements) -> Result<FallbackChain> {
+        let selection = self.selector.select(&task, requirements, &self.catalog)?;
+        FallbackChain::try_from_targets(selection.targets())
     }
 }
 
 impl Default for Router {
     fn default() -> Self {
-        Self::new(RoutingPolicy::Balanced)
+        Self::new(ExecutionPolicy::Balanced)
     }
 }

@@ -5,6 +5,7 @@ use crate::cache::{AiCache, MemoryCache};
 use crate::client::AiClient;
 use crate::config::{AiConfig, ProviderSettings, TokenBudget};
 use crate::conversation::{ConversationStore, InMemoryConversationStore};
+use crate::models::{Availability, ModelCatalog};
 use crate::policy::RoutingPolicy;
 use crate::prompt::manager::PromptManager;
 use crate::prompt::PromptRegistry;
@@ -34,6 +35,7 @@ pub struct AiClientBuilder {
     cache: Option<Arc<dyn AiCache>>,
     llm_factory: Option<Arc<dyn LlmFactory>>,
     available_providers: Option<Vec<Provider>>,
+    catalog: Option<ModelCatalog>,
 }
 
 impl Default for AiClientBuilder {
@@ -62,6 +64,7 @@ impl AiClientBuilder {
             cache: None,
             llm_factory: None,
             available_providers: None,
+            catalog: None,
         }
     }
 
@@ -159,6 +162,11 @@ impl AiClientBuilder {
         self
     }
 
+    pub fn catalog(mut self, catalog: ModelCatalog) -> Self {
+        self.catalog = Some(catalog);
+        self
+    }
+
     /// Infallible, matching the spec `AiClient::builder().build()`.
     pub fn build(self) -> AiClient {
         let config = AiConfig {
@@ -182,9 +190,16 @@ impl AiClientBuilder {
         } else {
             self.cache
         };
+        let mut catalog = self.catalog.unwrap_or_else(ModelCatalog::builtin);
+        let selectable = self
+            .available_providers
+            .clone()
+            .unwrap_or_else(|| config.available_providers());
+        catalog.mark_all_except(&selectable, Availability::Unavailable);
+        catalog.mark_providers(&selectable, Availability::Available);
         AiClient {
             config,
-            router: Router::new(self.routing_policy),
+            router: Router::new(self.routing_policy).with_catalog(catalog),
             prompts: PromptManager::new(registry),
             tools: self
                 .tool_registry

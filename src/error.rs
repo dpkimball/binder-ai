@@ -6,8 +6,29 @@ pub enum AiError {
     #[error(transparent)]
     Llm(#[from] LlmError),
 
+    #[error("no eligible model for this task and policy")]
+    NoEligibleModel,
+
+    #[error("model unavailable: {message}")]
+    ModelUnavailable { message: String },
+
+    #[error("required capability unavailable: {message}")]
+    CapabilityUnavailable { message: String },
+
+    #[error("cost limit exceeded: {message}")]
+    CostLimitExceeded { message: String },
+
+    #[error("context too large: {message}")]
+    ContextTooLarge { message: String },
+
+    #[error("local execution required; refusing cloud fallback")]
+    LocalExecutionRequired,
+
+    #[error("provider failure: {message}")]
+    ProviderFailure { message: String },
+
     #[error("routing failed: {message}")]
-    Routing { message: String },
+    RoutingFailure { message: String },
 
     #[error("prompt error: {message}")]
     Prompt { message: String },
@@ -36,7 +57,14 @@ impl AiError {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Llm(err) => err.kind(),
-            Self::Routing { .. } => "routing",
+            Self::NoEligibleModel => "no_eligible_model",
+            Self::ModelUnavailable { .. } => "model_unavailable",
+            Self::CapabilityUnavailable { .. } => "capability_unavailable",
+            Self::CostLimitExceeded { .. } => "cost_limit_exceeded",
+            Self::ContextTooLarge { .. } => "context_too_large",
+            Self::LocalExecutionRequired => "local_execution_required",
+            Self::ProviderFailure { .. } => "provider_failure",
+            Self::RoutingFailure { .. } => "routing_failure",
             Self::Prompt { .. } => "prompt",
             Self::Budget { .. } => "budget",
             Self::Tool { .. } => "tool",
@@ -47,7 +75,7 @@ impl AiError {
     }
 
     pub fn routing(message: impl Into<String>) -> Self {
-        Self::Routing {
+        Self::RoutingFailure {
             message: message.into(),
         }
     }
@@ -99,13 +127,16 @@ impl AiError {
                     | LlmError::ProviderError { .. }
                     | LlmError::UnsupportedFeature { .. }
             ),
-            Self::Routing { .. } => true,
+            Self::RoutingFailure { .. }
+            | Self::ProviderFailure { .. }
+            | Self::ModelUnavailable { .. } => true,
             _ => false,
         }
     }
 
     pub fn is_context_too_large(&self) -> bool {
         match self {
+            Self::ContextTooLarge { .. } => true,
             Self::Llm(LlmError::InvalidRequest { message }) => {
                 let m = message.to_ascii_lowercase();
                 m.contains("context") || m.contains("too large") || m.contains("token")
@@ -122,7 +153,8 @@ mod tests {
 
     #[test]
     fn kinds_are_stable() {
-        assert_eq!(AiError::routing("none").kind(), "routing");
+        assert_eq!(AiError::routing("none").kind(), "routing_failure");
         assert_eq!(AiError::json("bad", 2).kind(), "json");
+        assert_eq!(AiError::NoEligibleModel.kind(), "no_eligible_model");
     }
 }

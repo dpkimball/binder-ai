@@ -1,27 +1,37 @@
 use serde::{Deserialize, Serialize};
 
-/// Application preference for how the router should pick a model.
+/// How the selector may pick among catalog entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum RoutingPolicy {
-    BestQuality,
-    Fastest,
-    LowestCost,
+pub enum ExecutionPolicy {
     LocalOnly,
-    CloudOnly,
+    PreferLocal,
+    LowestCost,
     #[default]
     Balanced,
+    BestQuality,
+    CloudOnly,
+    FreeFirst,
+    /// Hard privacy: same selection as [`Self::LocalOnly`].
+    Private,
+    Fastest,
 }
 
-impl RoutingPolicy {
+/// Backward-compatible name used by the first crate slice.
+pub type RoutingPolicy = ExecutionPolicy;
+
+impl ExecutionPolicy {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::BestQuality => "best_quality",
-            Self::Fastest => "fastest",
-            Self::LowestCost => "lowest_cost",
             Self::LocalOnly => "local_only",
-            Self::CloudOnly => "cloud_only",
+            Self::PreferLocal => "prefer_local",
+            Self::LowestCost => "lowest_cost",
             Self::Balanced => "balanced",
+            Self::BestQuality => "best_quality",
+            Self::CloudOnly => "cloud_only",
+            Self::FreeFirst => "free_first",
+            Self::Private => "private",
+            Self::Fastest => "fastest",
         }
     }
 
@@ -30,11 +40,15 @@ impl RoutingPolicy {
     }
 
     pub fn allows_cloud(self) -> bool {
-        !matches!(self, Self::LocalOnly)
+        !matches!(self, Self::LocalOnly | Self::Private)
+    }
+
+    pub fn is_private(self) -> bool {
+        matches!(self, Self::LocalOnly | Self::Private)
     }
 }
 
-impl std::fmt::Display for RoutingPolicy {
+impl std::fmt::Display for ExecutionPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
@@ -46,8 +60,10 @@ mod tests {
 
     #[test]
     fn local_only_rejects_cloud() {
-        assert!(RoutingPolicy::LocalOnly.allows_local());
-        assert!(!RoutingPolicy::LocalOnly.allows_cloud());
-        assert!(!RoutingPolicy::CloudOnly.allows_local());
+        assert!(ExecutionPolicy::LocalOnly.allows_local());
+        assert!(!ExecutionPolicy::LocalOnly.allows_cloud());
+        assert!(!ExecutionPolicy::Private.allows_cloud());
+        assert!(!ExecutionPolicy::CloudOnly.allows_local());
+        assert!(ExecutionPolicy::FreeFirst.allows_cloud());
     }
 }

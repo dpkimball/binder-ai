@@ -38,12 +38,36 @@ let review = ai
 # }
 ```
 
-Routing picks the model. Callers describe intent, not providers.
+Routing picks the model from the catalog. Callers describe intent, not providers.
+
+```rust
+use binder_ai::{AiClient, AiRequest, CostClass, ExecutionPolicy, TaskKind};
+
+# async fn prefer_local(ai: AiClient) -> binder_ai::Result<()> {
+let request = AiRequest::builder()
+    .task(TaskKind::CodeGeneration)
+    .policy(ExecutionPolicy::PreferLocal)
+    .input("write a parser")
+    .build();
+let _ = ai.execute(request).await?;
+
+let free = AiRequest::builder()
+    .task(TaskKind::Planning)
+    .policy(ExecutionPolicy::LowestCost)
+    .max_cost(CostClass::Free)
+    .input("plan the issue")
+    .build();
+let _ = ai.execute(free).await?;
+# Ok(())
+# }
+```
+
+`ExecutionPolicy::LocalOnly` / `Private` never send request content to a cloud provider. `max_cost` is never silently exceeded.
 
 ```rust
 use binder_ai::{AiClient, RoutingPolicy};
 
-# fn prefer_local() -> binder_ai::AiClient {
+# fn prefer_local_client() -> binder_ai::AiClient {
 AiClient::builder()
     .routing_policy(RoutingPolicy::LocalOnly)
     .build()
