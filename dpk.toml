@@ -1,0 +1,7 @@
+[project]
+name = "binder-ai"
+language = "rust"
+
+[skip]
+image = true
+deploy = true

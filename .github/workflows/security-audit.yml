@@ -1,0 +1,35 @@
+# Consumer workflow: thin call into dpk-ci security-audit-dispatch.
+# Scan execution lives in the Security Audit Kubernetes service (memoryai).
+
+name: Security Audit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.mdx"
+      - "**/*.rst"
+      - "**/*.txt"
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+concurrency:
+  group: security-audit-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  security-audit:
+    uses: dpkimball/dpk-ci/.github/workflows/security-audit-dispatch.yml@master
+    with:
+      repository_name: binder-ai
+      github_repository: dpkimball/binder-ai
+      classification: high
+      runner: product-ci
+    secrets: inherit
