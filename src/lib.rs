@@ -60,8 +60,10 @@ pub use task::{Task, TaskKind};
 pub use telemetry::{estimate_cost, estimate_cost_for, AiMetrics, CostEstimate};
 pub use tools::{MockToolExecutor, ToolExecutor, ToolKind, ToolRegistry, UnboundToolExecutor};
 pub use workflows::{
-    FileEdit, ImplementationPlan, Issue, IssueImplementationRequest, IssueImplementationResult,
-    IssueImplementationWorkflow, WorkflowError,
+    dispatch, AutoRemediation, DeterministicAction, DispatchDecision, FileEdit, Finding,
+    FindingKind, FindingOutcome, HygieneConfig, HygieneEngine, HygieneReport, ImplementationPlan,
+    Issue, IssueImplementationRequest, IssueImplementationResult, IssueImplementationWorkflow,
+    ProjectKind, RemediationType, Severity, WorkflowError,
 };
 
 /// Spec alias: callers describe a task, not a vendor.

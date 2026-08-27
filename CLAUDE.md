@@ -23,6 +23,7 @@ src/
   tools/, telemetry/, cache/, providers/, planners/
   runtime/                           # LocalRuntime + MemoryRuntime
   workflows/issue/                   # IssueImplementationWorkflow
+  workflows/hygiene/                 # findings, dispatcher, optional Rust AI remediation
 ```
 
 Built-in prompts live in `prompt/mod.rs`. Catalog routing lives in `routing/selector.rs` and `models/`. Workflows must use `Runtime` instead of `std::fs` / `Command` / `git2`.

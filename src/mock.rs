@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 
 use crate::client::AiClient;
+use crate::policy::RoutingPolicy;
 use binder_llm::{
     ChatMessage, ChatRequest, ChatResponse, ChatStream, EmbeddingRequest, EmbeddingResponse,
     LlmClient, LlmError, LlmProvider, ModelInfo, Provider,
@@ -114,6 +115,17 @@ pub struct MockAiClient {
 
 impl MockAiClient {
     pub fn json_turns(turns: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        Self::json_turns_with_policy(RoutingPolicy::Balanced, turns)
+    }
+
+    pub fn json_turns_local(turns: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        Self::json_turns_with_policy(RoutingPolicy::LocalOnly, turns)
+    }
+
+    pub fn json_turns_with_policy(
+        policy: RoutingPolicy,
+        turns: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Self {
         let mut scripted = ScriptedProvider::new();
         for turn in turns {
             scripted = scripted.push_chat(ChatResponse::new(
@@ -129,7 +141,11 @@ impl MockAiClient {
             .build_config()
             .expect("mock llm config");
         let llm = LlmClient::from_provider(Arc::new(scripted), config);
-        let client = AiClient::builder().semantic_retries(1).llm(llm).build();
+        let client = AiClient::builder()
+            .routing_policy(policy)
+            .semantic_retries(1)
+            .llm(llm)
+            .build();
         Self { client, provider }
     }
 
