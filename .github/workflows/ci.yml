@@ -13,8 +13,7 @@ concurrency:
 
 jobs:
   ci:
-    # Temporarily pinned until dpkimball/dpk-ci#264 merges (`cargo` on PATH).
-    uses: dpkimball/dpk-ci/.github/workflows/rust-library-ci.yml@fix/rust-library-ci-cargo-path
+    uses: dpkimball/dpk-ci/.github/workflows/rust-library-ci.yml@master
     with:
       project_name: binder-ai
       runner: product-ci
