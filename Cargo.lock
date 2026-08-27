@@ -42,6 +42,8 @@ dependencies = [
 [[package]]
 name = "binder-llm"
 version = "0.1.0"
+source = "sparse+http://127.0.0.1:31127/api/v1/crates/"
+checksum = "48bb70bf75c509f8b73ab85e276f40ef68fd4c904922a3502b55e945db4fde14"
 dependencies = [
  "async-trait",
  "bytes",
