@@ -10,7 +10,7 @@ Do **not** add HTTP clients, provider SDKs, auth, or provider JSON mapping. Thos
 
 Do **not** walk the repository to discover architecture when bindb can answer. Query [`Knowledge`] first.
 
-Do **not** add REST APIs. This is a library. The `hygiene_apply` example is the Cursor skill adapter (JSON in, HygieneWorkflow out), not a hosted service.
+Do **not** add REST APIs. This is a library. The `hygiene_apply` binary is the Cursor skill / dashboard adapter (JSON in, HygieneWorkflow out), not a hosted HTTP service. Live Ollama uses `OLLAMA_HOST` (QA Argo `ollama-service` or dev `dev-proxies-ollama`).
 
 Do **not** create a `binder-runtime` crate. Keep `Runtime` here until multiple applications need it independently.
 

@@ -1,6 +1,7 @@
-//! Skill apply adapter: consume discovery JSON, run HygieneWorkflow.
+//! Skill / dashboard apply adapter: discovery JSON → HygieneWorkflow.
 //!
-//! This is not a REST API and not hosted dashboard apply.
+//! Not a REST API. Live LLM uses `OLLAMA_HOST` (QA Argo `ollama-service` or
+//! dev `dev-proxies-ollama`) via `ProviderSettings::defaults_for`.
 
 use std::env;
 use std::path::{Path, PathBuf};

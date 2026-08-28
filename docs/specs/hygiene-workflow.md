@@ -4,6 +4,7 @@ status: spec
 github_issue: https://github.com/dpkimball/binder-ai/issues/16
 github_issue_e2e: https://github.com/dpkimball/binder-ai/issues/18
 github_issue_skill: https://github.com/dpkimball/binder-ai/issues/20
+github_issue_ollama: https://github.com/dpkimball/binder-ai/issues/22
 ---
 
 # Hygiene apply from bindb
@@ -40,7 +41,7 @@ HygieneWorkflow
 
 `HygieneEngine::process_findings` remains for callers that still search. New apply work uses `HygieneWorkflow`.
 
-The Cursor skill discovers operational findings, writes the JSON document in `SkillApplyDocument`, then runs `cargo run --example hygiene_apply` (not `HygieneEngine::process_findings`). Dashboard Python `run_hygiene` is unchanged.
+The Cursor skill discovers operational findings, writes the JSON document in `SkillApplyDocument`, then runs `cargo run --bin hygiene_apply` (not `HygieneEngine::process_findings`). Live LLM uses `OLLAMA_HOST` (Argo QA Ollama via `dev-proxies-ollama` in dev). Dashboard Python `run_hygiene` invokes that binary for AI kinds when it is on PATH.
 
 ## Rules
 

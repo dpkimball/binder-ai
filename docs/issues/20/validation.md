@@ -15,7 +15,7 @@ On `/tmp/hygiene-skill-C8k9WU/repo`:
 Wrote `apply.json` (`SkillApplyDocument`). Then `codeintel index` (3 files, 59ms) and:
 
 ```
-cargo run --all-features --example hygiene_apply -- \
+cargo run --all-features --bin hygiene_apply -- \
   --repo $REPO --store $STORE --name hygiene-skill \
   --codeintel $CODEINTEL --input apply.json
 ```

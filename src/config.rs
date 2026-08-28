@@ -145,12 +145,30 @@ impl ProviderSettings {
             Provider::Xai => Some("XAI_API_KEY".into()),
             Provider::Gemini => Some("GEMINI_API_KEY".into()),
         };
+        let base_url = match provider {
+            Provider::Ollama => ollama_host_from_env(),
+            _ => None,
+        };
         Self {
             api_key: None,
             api_key_env,
-            base_url: None,
+            base_url,
             default_model: None,
         }
+    }
+}
+
+/// Cluster / GitOps Ollama. Empty or unset → binder-llm default `localhost:11434`.
+fn ollama_host_from_env() -> Option<String> {
+    let raw = std::env::var("OLLAMA_HOST").ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.contains("://") {
+        Some(trimmed.to_string())
+    } else {
+        Some(format!("http://{trimmed}"))
     }
 }
 
@@ -243,5 +261,51 @@ impl BudgetLedger {
             *self.workflow.entry(id.0.clone()).or_insert(0) += tokens;
         }
         self.spent_usd += usd;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    use binder_llm::Provider;
+
+    static OLLAMA_HOST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_ollama_host(value: &str, f: impl FnOnce()) {
+        let _guard = OLLAMA_HOST_LOCK.lock().expect("ollama host env lock");
+        let prev = std::env::var("OLLAMA_HOST").ok();
+        std::env::set_var("OLLAMA_HOST", value);
+        f();
+        match prev {
+            Some(prev) => std::env::set_var("OLLAMA_HOST", prev),
+            None => std::env::remove_var("OLLAMA_HOST"),
+        }
+    }
+
+    #[test]
+    fn ollama_host_env_becomes_base_url() {
+        with_ollama_host(
+            "http://dev-proxies-ollama.dev.svc.cluster.local:11434",
+            || {
+                let settings = ProviderSettings::defaults_for(Provider::Ollama);
+                assert_eq!(
+                    settings.base_url.as_deref(),
+                    Some("http://dev-proxies-ollama.dev.svc.cluster.local:11434")
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn ollama_host_without_scheme_gets_http() {
+        with_ollama_host("ollama-service.services.svc.cluster.local:11434", || {
+            let settings = ProviderSettings::defaults_for(Provider::Ollama);
+            assert_eq!(
+                settings.base_url.as_deref(),
+                Some("http://ollama-service.services.svc.cluster.local:11434")
+            );
+        });
     }
 }
