@@ -100,6 +100,15 @@ impl PromptRegistry {
 fn builtin_prompts() -> Vec<PromptVersion> {
     vec![
         PromptVersion {
+            name: "health-insight".into(),
+            version: 1,
+            template: "You are a personal running coach analysing one month of training data. \
+                       Respond in 2–3 plain-English sentences. Surface the single most actionable \
+                       insight — focus on the clearest pattern between sleep, load, and pace. \
+                       Do not list raw numbers; interpret them. Be direct and encouraging.\n\n\
+                       Training data:\n{input}".into(),
+        },
+        PromptVersion {
             name: "summarization".into(),
             version: 1,
             template: "Summarize the following for a Binder operator. Be concise.\n\n{input}".into(),

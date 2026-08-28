@@ -39,9 +39,11 @@ impl ModelRequirements {
 impl TaskKind {
     pub fn default_policy(self) -> ExecutionPolicy {
         match self {
-            Self::CodeGeneration | Self::Refactoring | Self::CodeReview | Self::Embedding => {
-                ExecutionPolicy::PreferLocal
-            }
+            Self::HealthInsight
+            | Self::CodeGeneration
+            | Self::Refactoring
+            | Self::CodeReview
+            | Self::Embedding => ExecutionPolicy::PreferLocal,
             Self::Summarization | Self::Classification | Self::Extraction | Self::Moderation => {
                 ExecutionPolicy::LowestCost
             }
