@@ -1,7 +1,10 @@
 //! Concrete Binder workflows. Not a generic engine.
 
+pub mod engineering;
 pub mod hygiene;
 pub mod issue;
+
+pub use engineering::{EngineeringReport, EngineeringRequest, EngineeringWorkflow};
 
 pub use hygiene::{
     dispatch, AutoRemediation, DeterministicAction, DispatchDecision, Finding, FindingKind,

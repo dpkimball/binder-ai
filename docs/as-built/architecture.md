@@ -7,8 +7,11 @@ flowchart TD
   apps["binder-server / binder-cloud / binder-desktop / binder-cli / Repository Hygiene"]
   ai["binder-ai AiClient"]
   runtime["binder-ai Runtime"]
+  knowledge["binder-ai Knowledge"]
+  bindb["bindb facts"]
   hygiene["HygieneEngine dispatcher"]
   wf["IssueImplementationWorkflow"]
+  eng["EngineeringWorkflow"]
   catalog["Model Catalog"]
   selector["ModelSelector"]
   llm["binder-llm LlmClient"]
@@ -21,6 +24,11 @@ flowchart TD
   apps --> ai
   apps --> runtime
   apps --> wf
+  apps --> eng
+  eng --> knowledge
+  knowledge --> bindb
+  eng --> ai
+  eng --> runtime
   wf --> ai
   wf --> runtime
   ai --> catalog
@@ -68,6 +76,10 @@ The router never scores the raw configured catalog. Unavailable models are not s
 5. `git_diff`
 
 `LocalRuntime` is the development implementation (`tokio::fs`, `tokio::process::Command`, `git2`, `ignore` search). `MemoryRuntime` is the test implementation (in-memory files, scripted commands). Docker/SSH/sandbox runtimes are out of scope until the trait has been used by real workflows.
+
+## EngineeringWorkflow
+
+Concrete bindb-first sequence: `Knowledge::plan` / `doctrine` → read **only** inspection-set paths via `Runtime` → plan JSON via `AiClient` → file edits via `AiClient` → write allowed paths → `cargo fmt` / `cargo test` → `git_diff` → `Knowledge::reindex` on success. Tests use `MemoryRuntime`, `MemoryKnowledge`, and `MockAiClient`. Search is not used.
 
 ## IssueImplementationWorkflow
 

@@ -24,6 +24,7 @@ pub struct MemoryRuntime {
     read_calls: AtomicU32,
     write_calls: AtomicU32,
     executed: Mutex<Vec<(String, Vec<String>)>>,
+    read_paths: Mutex<Vec<PathBuf>>,
 }
 
 impl Default for MemoryRuntime {
@@ -49,6 +50,7 @@ impl MemoryRuntime {
             read_calls: AtomicU32::new(0),
             write_calls: AtomicU32::new(0),
             executed: Mutex::new(Vec::new()),
+            read_paths: Mutex::new(Vec::new()),
         }
     }
 
@@ -111,6 +113,13 @@ impl MemoryRuntime {
     pub fn executed_commands(&self) -> Vec<(String, Vec<String>)> {
         self.executed.lock().expect("memory runtime mutex").clone()
     }
+
+    pub fn read_paths(&self) -> Vec<PathBuf> {
+        self.read_paths
+            .lock()
+            .expect("memory runtime mutex")
+            .clone()
+    }
 }
 
 #[async_trait]
@@ -118,6 +127,10 @@ impl Runtime for MemoryRuntime {
     async fn read_file(&self, path: &Path) -> Result<String> {
         self.read_calls.fetch_add(1, Ordering::SeqCst);
         let key = normalize_key(path);
+        self.read_paths
+            .lock()
+            .expect("memory runtime mutex")
+            .push(key.clone());
         self.files
             .lock()
             .expect("memory runtime mutex")

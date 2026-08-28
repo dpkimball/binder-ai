@@ -4,9 +4,11 @@ Guidance for agents working in `binder-ai`.
 
 ## What this crate is
 
-Opinionated AI orchestration for Binder. Applications talk to [`AiClient`] for models and [`Runtime`] for the development environment. This crate owns routing, prompts, context, conversations, tool orchestration, fallback, semantic retries, budgets, telemetry, and workspace operations.
+Opinionated AI orchestration for Binder. Applications talk to [`AiClient`] for models and [`Runtime`] for the development environment. This crate owns routing, prompts, context, conversations, tool orchestration, fallback, semantic retries, budgets, telemetry, workspace operations, and **bindb-first engineering workflow**.
 
 Do **not** add HTTP clients, provider SDKs, auth, or provider JSON mapping. Those belong in `binder-llm`.
+
+Do **not** walk the repository to discover architecture when bindb can answer. Query [`Knowledge`] first.
 
 Do **not** add REST APIs. This is a library.
 
@@ -22,7 +24,9 @@ src/
   prompt/, context/, conversation.rs, session.rs
   tools/, telemetry/, cache/, providers/, planners/
   runtime/                           # LocalRuntime + MemoryRuntime
-  workflows/issue/                   # IssueImplementationWorkflow
+  knowledge/                         # bindb facts (Knowledge trait + MemoryKnowledge)
+  workflows/issue/                   # IssueImplementationWorkflow (search-based hygiene path)
+  workflows/engineering/             # bindb-first EngineeringWorkflow
   workflows/hygiene/                 # findings, dispatcher, optional Rust AI remediation
 ```
 
