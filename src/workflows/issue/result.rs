@@ -32,6 +32,9 @@ pub enum WorkflowError {
 
     #[error("git failed: {message}")]
     GitFailed { message: String },
+
+    #[error("knowledge failed: {message}")]
+    KnowledgeFailed { message: String },
 }
 
 impl WorkflowError {
@@ -43,6 +46,7 @@ impl WorkflowError {
             Self::FormattingFailed { .. } => "formatting_failed",
             Self::TestingFailed { .. } => "testing_failed",
             Self::GitFailed { .. } => "git_failed",
+            Self::KnowledgeFailed { .. } => "knowledge_failed",
         }
     }
 
@@ -91,6 +95,12 @@ impl WorkflowError {
     pub fn from_runtime_git(err: &crate::runtime::RuntimeError) -> Self {
         Self::GitFailed {
             message: err.kind().to_string(),
+        }
+    }
+
+    pub fn from_knowledge(err: crate::knowledge::KnowledgeError) -> Self {
+        Self::KnowledgeFailed {
+            message: err.message,
         }
     }
 }

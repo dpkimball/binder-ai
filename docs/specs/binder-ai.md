@@ -3,11 +3,11 @@
 github_issue: https://github.com/dpkimball/binder-ai/issues/1
 github_issue_catalog: https://github.com/dpkimball/binder-ai/issues/3
 github_issue_runtime: https://github.com/dpkimball/binder-ai/issues/4
-github_issue_workflow: https://github.com/dpkimball/binder-ai/issues/6
+github_issue_engineering: https://github.com/dpkimball/binder-ai/issues/14
 
 Binder's AI orchestration layer. Applications never call `binder-llm` directly. All AI traffic flows through `AiClient`.
 
-`binder-llm` communicates with LLM providers. `binder-ai` decides how, when, and why an LLM is used.
+`bindb` answers facts. `binder-llm` executes reasoning on supplied context. `binder-ai` owns the workflow: query bindb, curate context, invoke binder-llm, execute, validate, re-index. See [responsibilities.md](responsibilities.md).
 
 ## In scope
 
@@ -24,6 +24,7 @@ Binder's AI orchestration layer. Applications never call `binder-llm` directly. 
 - Token budgets, cost estimates (no billing), tracing metadata, optional caches
 - `Runtime` trait (`LocalRuntime` / `MemoryRuntime`) for files, search, structured commands, and git — independent of LLM providers
 - `IssueImplementationWorkflow`: search → plan → edit → `cargo fmt` → `cargo test` → git diff (not a generic engine)
+- `EngineeringWorkflow`: `Knowledge` (bindb) → inspection set → curated `AiClient` context → `Runtime` edits → fmt/test → re-index
 
 ## Out of scope
 

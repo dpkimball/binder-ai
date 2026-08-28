@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/dpkimball/binder-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/dpkimball/binder-ai/actions/workflows/ci.yml)
 
-Binder's AI orchestration layer.
+binder-ai is Binder's **autonomous engineering orchestrator**.
 
-`binder-llm` talks to providers. `binder-ai` decides **how, when, and why** an LLM is used. Applications (`binder-server`, `binder-cloud`, `binder-desktop`, `binder-cli`) must not call `binder-llm` directly. All AI requests flow through `AiClient`.
+`bindb` answers facts. `binder-ai` decides **how, when, and why** an LLM is used and drives the workflow. `binder-llm` is the replaceable reasoning engine. Applications (`binder-server`, `binder-cloud`, `binder-desktop`, `binder-cli`) must not call `binder-llm` directly. All AI requests flow through `AiClient`.
+
+Architectural context comes from bindb (`Knowledge`) before any LLM call. See [docs/specs/responsibilities.md](docs/specs/responsibilities.md).
 
 ## Role
 
@@ -17,6 +19,7 @@ Binder's AI orchestration layer.
 - `Runtime` for files, search, structured commands, and git (not LLM providers)
 - `IssueImplementationWorkflow` for a single concrete issue → plan → edit → fmt → test → diff path
 - `HygieneEngine` for optional Rust source remediation from deterministic repository findings (inspection stays outside this crate)
+- `EngineeringWorkflow` for bindb-first engineering: query `Knowledge`, open only the inspection set, invoke binder-llm, validate, re-index
 
 HTTP, provider SDKs, authentication, and request mapping stay in `binder-llm`.
 
@@ -133,6 +136,33 @@ let _report = engine.process_findings(runtime, &findings).await;
 ```
 
 The workflow git diff is the output. Hygiene never commits, merges, pushes, or opens a PR.
+
+Bindb-first engineering (facts from `Knowledge`, no `Runtime::search`):
+
+```rust
+use std::path::PathBuf;
+use binder_ai::{
+    AiClient, EngineeringRequest, EngineeringWorkflow, LocalRuntime, MemoryKnowledge,
+};
+
+# async fn engineering(ai: AiClient) -> Result<(), binder_ai::WorkflowError> {
+let knowledge = MemoryKnowledge::for_files(
+    "prevent overflow in add",
+    [PathBuf::from("src/lib.rs")],
+);
+let runtime = LocalRuntime::new(".").expect("workspace");
+let workflow = EngineeringWorkflow::new(runtime, ai, knowledge);
+let _report = workflow
+    .execute(EngineeringRequest {
+        request: "prevent overflow in add".into(),
+        repository_root: PathBuf::from("."),
+    })
+    .await?;
+# Ok(())
+# }
+```
+
+Production `Knowledge` is a bindb/codeintel adapter. `MemoryKnowledge` is the test double.
 
 ## Develop
 

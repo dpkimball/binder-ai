@@ -10,6 +10,7 @@ mod config;
 mod context;
 mod conversation;
 mod error;
+mod knowledge;
 mod mock;
 mod models;
 mod planners;
@@ -36,6 +37,9 @@ pub use conversation::{
     Conversation, ConversationId, ConversationStore, InMemoryConversationStore,
 };
 pub use error::{AiError, Result};
+pub use knowledge::{
+    DoctrineSnapshot, Knowledge, KnowledgeError, KnowledgePlan, MemoryKnowledge, ReindexStats,
+};
 pub use mock::{MockAiClient, MockRouter, ScriptedProvider};
 pub use models::{
     Availability, CatalogFile, CostClass, ExecutionMode, ModelCapabilities, ModelCapability,
@@ -60,9 +64,10 @@ pub use task::{Task, TaskKind};
 pub use telemetry::{estimate_cost, estimate_cost_for, AiMetrics, CostEstimate};
 pub use tools::{MockToolExecutor, ToolExecutor, ToolKind, ToolRegistry, UnboundToolExecutor};
 pub use workflows::{
-    dispatch, AutoRemediation, DeterministicAction, DispatchDecision, FileEdit, Finding,
-    FindingKind, FindingOutcome, HygieneConfig, HygieneEngine, HygieneReport, ImplementationPlan,
-    Issue, IssueImplementationRequest, IssueImplementationResult, IssueImplementationWorkflow,
+    dispatch, AutoRemediation, DeterministicAction, DispatchDecision, EngineeringReport,
+    EngineeringRequest, EngineeringWorkflow, FileEdit, Finding, FindingKind, FindingOutcome,
+    HygieneConfig, HygieneEngine, HygieneReport, ImplementationPlan, Issue,
+    IssueImplementationRequest, IssueImplementationResult, IssueImplementationWorkflow,
     ProjectKind, RemediationType, Severity, WorkflowError,
 };
 
