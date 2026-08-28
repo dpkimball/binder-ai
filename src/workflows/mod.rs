@@ -10,7 +10,8 @@ pub use hygiene::{
     dispatch, AutoRemediation, DeterministicAction, DispatchDecision, Finding, FindingKind,
     FindingOutcome, HygieneConfig, HygieneEngine, HygieneReport, HygieneWorkflow,
     HygieneWorkflowReport, HygieneWorkflowRequest, OperationalContext, ProjectKind,
-    RemediationType, Severity,
+    RemediationType, Severity, SkillApplyDocument, SkillApplyReport, SkillFindingJson,
+    SkillOperationalJson, SkillOutcomeJson,
 };
 pub use issue::{
     FileEdit, ImplementationPlan, Issue, IssueImplementationRequest, IssueImplementationResult,

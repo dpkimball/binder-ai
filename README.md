@@ -138,7 +138,7 @@ let _report = engine.process_findings(runtime, &findings).await;
 
 The workflow git diff is the output. Hygiene never commits, merges, pushes, or opens a PR.
 
-Bindb-first Hygiene (`HygieneWorkflow`): consume findings from live discovery, query `Knowledge` only when judgment needs an inspection set, skip binder-llm for deterministic apply, re-index and record history after validation. See [docs/specs/hygiene-workflow.md](docs/specs/hygiene-workflow.md).
+Bindb-first Hygiene (`HygieneWorkflow`): consume findings from live discovery, query `Knowledge` only when judgment needs an inspection set, skip binder-llm for deterministic apply, re-index and record history after validation. The Cursor skill writes `SkillApplyDocument` JSON and runs `cargo run --example hygiene_apply`. See [docs/specs/hygiene-workflow.md](docs/specs/hygiene-workflow.md). Dashboard Python apply is unchanged.
 
 Bindb-first engineering (facts from `Knowledge`, no `Runtime::search`):
 

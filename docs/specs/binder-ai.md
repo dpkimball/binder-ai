@@ -5,6 +5,7 @@ github_issue_catalog: https://github.com/dpkimball/binder-ai/issues/3
 github_issue_runtime: https://github.com/dpkimball/binder-ai/issues/4
 github_issue_engineering: https://github.com/dpkimball/binder-ai/issues/14
 github_issue_hygiene_workflow: https://github.com/dpkimball/binder-ai/issues/16
+github_issue_hygiene_skill: https://github.com/dpkimball/binder-ai/issues/20
 
 Binder's AI orchestration layer. Applications never call `binder-llm` directly. All AI traffic flows through `AiClient`.
 

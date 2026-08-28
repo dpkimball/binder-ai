@@ -3,6 +3,7 @@ title: Agent Workflow POC #1 — Hygiene from bindb
 status: spec
 github_issue: https://github.com/dpkimball/binder-ai/issues/16
 github_issue_e2e: https://github.com/dpkimball/binder-ai/issues/18
+github_issue_skill: https://github.com/dpkimball/binder-ai/issues/20
 ---
 
 # Hygiene apply from bindb
@@ -39,6 +40,8 @@ HygieneWorkflow
 
 `HygieneEngine::process_findings` remains for callers that still search. New apply work uses `HygieneWorkflow`.
 
+The Cursor skill discovers operational findings, writes the JSON document in `SkillApplyDocument`, then runs `cargo run --example hygiene_apply` (not `HygieneEngine::process_findings`). Dashboard Python `run_hygiene` is unchanged.
+
 ## Rules
 
 - Findings are an input. HygieneWorkflow does not walk the board or GitHub.
@@ -51,4 +54,4 @@ HygieneWorkflow
 
 ## Non-goals
 
-New Hygiene finding kinds, parser improvements, IDE/Cursor product integration, hosted dashboard rewrite, generic workflow framework. Dashboard Python apply remains until the worker image ships a binder-ai binary.
+New Hygiene finding kinds, parser improvements, IDE/Cursor product integration beyond the skill JSON command, hosted dashboard rewrite, generic workflow framework. Dashboard Python apply remains until the worker image ships a binder-ai binary.
