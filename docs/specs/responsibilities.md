@@ -42,7 +42,7 @@ binder-ai owns autonomous execution:
 
 binder-ai does **not** implement LLM reasoning (no provider SDKs, no prompt-as-transport). It does **not** discover application structure by walking the repository when bindb can answer.
 
-`IssueImplementationWorkflow` still uses `Runtime::search` when no inspection set is supplied (`HygieneEngine::process_findings`). Bindb-first Hygiene uses `HygieneWorkflow` (no search). Bindb-first engineering uses `EngineeringWorkflow`.
+`IssueImplementationWorkflow` still uses `Runtime::search` when no inspection set is supplied (`HygieneEngine::process_findings`). Bindb-first *engineering* uses `EngineeringWorkflow`. Hygiene **apply** uses `HygieneWorkflow`: findings come from live discovery; bindb is queried only when judgment needs an inspection set.
 
 ## binder-llm — reasoning
 
@@ -85,13 +85,15 @@ binder-ai
 
 ## Decision rules
 
-Use **bindb** when the answer is a fact: dependency lookup, impact, doctrine, historical comparison, repository selection, inspection set.
+Use **bindb** when the answer is a fact about the application: dependency lookup, impact, doctrine, historical comparison, inspection set for a source change.
+
+Use **live inspection** when the answer is current operational state: dirty trees, leftover branches, CI, PR heads, nested clones, secrets.
 
 Use **binder-llm** when judgment is required: implement this, explain this design, compare alternatives, review, generate tests, improve readability, write docs, evaluate tradeoffs. Routine Hygiene (fmt, clippy `--fix`, badge, delete merged branch) must not invoke binder-llm.
 
 ## Design constraints
 
-- binder-ai queries bindb before invoking binder-llm whenever architectural context is required.
+- binder-ai queries bindb before invoking binder-llm whenever **architectural** context is required. Operational hygiene discovers live git/GitHub/CI state first, then queries bindb only for source-change inspection sets.
 - binder-llm receives curated context, never a repository-wide dump from `find` / `rg`.
 - bindb remains the authoritative semantic model.
 - binder-llm implementations are replaceable without changing binder-ai orchestration.

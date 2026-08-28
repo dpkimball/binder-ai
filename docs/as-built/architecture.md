@@ -92,7 +92,9 @@ Concrete sequence, not a framework: search and read via `Runtime` **or** read a 
 
 ## HygieneWorkflow
 
-Bindb-first Hygiene POC: `Knowledge::doctrine` / `plan` → existing finding dispatch → binder-llm only for AI findings with the inspection set as file context (`IssueImplementationRequest::inspection_set`) → validate → `Knowledge::reindex` → `Knowledge::record_execution`. Deterministic fmt/clippy/badge/branch-delete skip the LLM. `Runtime::search` is not used. Dashboard `HygieneEngine::process_findings` is unchanged.
+Apply path only. Findings and `OperationalContext` come from the scanner / dashboard / skill. bindb `Knowledge::plan` runs only for AI findings. Deterministic fmt/clippy/badge/branch-delete skip the LLM. Branch delete uses the same PR-head / dirty-checkout guards as dashboard hygiene. README badge reads the live file. After validation: `reindex` + `record_execution`. Production knowledge: `CodeintelKnowledge`. Tests: `MemoryKnowledge`. `Runtime::search` is not used. Dashboard `HygieneEngine::process_findings` is unchanged.
+
+## HygieneEngine
 
 ## HygieneEngine
 

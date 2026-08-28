@@ -38,8 +38,8 @@ pub use conversation::{
 };
 pub use error::{AiError, Result};
 pub use knowledge::{
-    DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError, KnowledgePlan, MemoryKnowledge,
-    ReindexStats,
+    CodeintelCli, CodeintelKnowledge, DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError,
+    KnowledgePlan, MemoryKnowledge, ProcessCodeintelCli, ReindexStats,
 };
 pub use mock::{MockAiClient, MockRouter, ScriptedProvider};
 pub use models::{
@@ -69,8 +69,8 @@ pub use workflows::{
     EngineeringRequest, EngineeringWorkflow, FileEdit, Finding, FindingKind, FindingOutcome,
     HygieneConfig, HygieneEngine, HygieneReport, HygieneWorkflow, HygieneWorkflowReport,
     HygieneWorkflowRequest, ImplementationPlan, Issue, IssueImplementationRequest,
-    IssueImplementationResult, IssueImplementationWorkflow, ProjectKind, RemediationType, Severity,
-    WorkflowError,
+    IssueImplementationResult, IssueImplementationWorkflow, OperationalContext, ProjectKind,
+    RemediationType, Severity, WorkflowError,
 };
 
 /// Spec alias: callers describe a task, not a vendor.

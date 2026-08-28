@@ -1,39 +1,38 @@
 # Validation — issue #16
 
-`HygieneWorkflow` on `MemoryKnowledge` + `MemoryRuntime` + `MockAiClient`. No network, no repository-wide discovery.
+Hygiene apply: findings from discovery, bindb only for application knowledge, re-index + history after success.
+
+## Principle
+
+Discovery (scanner / dashboard / skill) owns live git/GitHub/CI state. `HygieneWorkflow` consumes those findings. bindb is queried when a finding needs an inspection set. Routine fmt/badge/branch-delete does not call `Knowledge::plan` or binder-llm.
 
 ## Demonstration
 
-Request: `hygiene fmt` with `FindingKind::CargoFmtRequired`.
+**Deterministic fmt** (`FindingKind::CargoFmtRequired`):
 
-1. **bindb first** — `Knowledge::doctrine` then `Knowledge::plan`. `plan_calls == 1` before any `Runtime` read.
-2. **Inspection set** — `[src/lib.rs]` from the graph. `cargo fmt` does not open those files.
-3. **LLM skipped** — dispatch is deterministic. `chat_calls == 0`, `llm_invoked == false`.
-4. **Execute** — scripted `cargo fmt` via `Runtime::execute`. `search_calls == 0`.
-5. **Validate** — finding success; doctrine 0 findings before and after.
-6. **Re-index** — `reindex_calls == 1`.
-7. **History** — `ExecutionRecord { workflow: "hygiene", llm_invoked: false }` stored in bindb.
+| Metric | Result |
+|--------|--------|
+| `plan_calls` | **0** |
+| binder-llm | **No** |
+| Search | **0** |
+| primary_source | `discovery` |
+| Re-index + history | yes |
+| Doctrine before / after | 0 / 0 |
 
-| Metric | Deterministic fmt | AI rust bug (curated) |
-|--------|-------------------|------------------------|
-| Planning time | `planning_ms` on report (sub-ms in tests) | same |
-| Inspection set size | 1 (`src/lib.rs`) | 1 (`src/lib.rs`) |
-| Files opened | 0 | 1 (`src/lib.rs`; README not read) |
-| Files modified | 0 | 1 (`src/lib.rs`) |
-| binder-llm invoked | **No** | **Yes** (2 turns, inspection-set context only) |
-| Validation | pass | pass |
-| Re-index duration | `reindex_ms` on report | same |
-| Doctrine before / after | 0 / 0 | 0 / 0 |
-| Search used | **0** | **0** |
+**Badge** with empty inspection set: README is read from the live tree; not gated on bindb.
 
-Empty inspection set + deterministic fmt: success, re-index, history. Empty inspection set + AI finding: `knowledge_failed`, **0** LLM calls, no re-index.
+**Branch delete guards:** open PR head refused (no `-d`, no re-index). Current leftover + clean: `git checkout <default>` then `git branch -d`.
 
-Dashboard `HygieneEngine::process_findings` is unchanged and still searches for AI remediation.
+**AI rust bug:** `plan_calls == 1`, inspection set `[src/lib.rs]`, README not read, 2 LLM turns, re-index + history, `primary_source: bindb`.
+
+Empty inspection set + AI: `knowledge_failed`, 0 LLM calls.
+
+Dashboard `HygieneEngine::process_findings` is unchanged (still searches for AI). Hosted Python apply is unchanged until a binder-ai binary is in the worker image.
 
 ## Tests
 
-`tests/hygiene_workflow.rs`. Full `cargo test --all-features` and `clippy -D warnings` via `make b`.
+`tests/hygiene_workflow.rs`. `CodeintelKnowledge` JSON mapping tests in `src/knowledge/codeintel.rs`. Full `make b`.
 
 ## Not in this milestone
 
-New Hygiene features, parser work, IDE/Cursor, hosted execution, generic workflow framework, production codeintel `Knowledge` adapter.
+New Hygiene features, dashboard Python rewrite, codeintel WAL object type for history (JSONL beside the store until then).

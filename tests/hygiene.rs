@@ -247,6 +247,7 @@ fn hygiene_modules_use_runtime_exclusively() {
         include_str!("../src/workflows/hygiene/result.rs"),
         include_str!("../src/workflows/hygiene/mod.rs"),
         include_str!("../src/workflows/hygiene/workflow.rs"),
+        include_str!("../src/workflows/hygiene/operational.rs"),
     ];
     let joined = sources.join("\n").to_ascii_lowercase();
     for needle in [

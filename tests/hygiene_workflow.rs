@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use binder_ai::{
     Command, CommandResult, Finding, FindingKind, GitDiff, HygieneConfig, HygieneWorkflow,
-    HygieneWorkflowRequest, MemoryKnowledge, MemoryRuntime, MockAiClient,
+    HygieneWorkflowRequest, MemoryKnowledge, MemoryRuntime, MockAiClient, OperationalContext,
 };
 
 fn cargo_fmt_runtime() -> MemoryRuntime {
@@ -21,6 +21,14 @@ fn cargo_fmt_runtime() -> MemoryRuntime {
         .script(
             Command::new("cargo").args(["clippy", "--fix", "--allow-dirty", "--allow-staged"]),
             CommandResult::success(""),
+        )
+        .script(
+            Command::new("git").args(["branch", "-d", "feature/old"]),
+            CommandResult::success("Deleted branch feature/old"),
+        )
+        .script(
+            Command::new("git").args(["checkout", "master"]),
+            CommandResult::success("Switched to branch master"),
         )
         .with_git_diff(GitDiff {
             branch: "master".into(),
@@ -49,7 +57,7 @@ fn plan_and_edits() -> (String, String) {
 }
 
 #[tokio::test]
-async fn deterministic_fmt_queries_bindb_and_skips_llm() {
+async fn deterministic_fmt_skips_bindb_plan_and_llm() {
     let runtime = Arc::new(cargo_fmt_runtime());
     let knowledge = Arc::new(MemoryKnowledge::for_files(
         "hygiene fmt",
@@ -66,17 +74,18 @@ async fn deterministic_fmt_queries_bindb_and_skips_llm() {
         .execute(HygieneWorkflowRequest {
             request: "hygiene fmt".into(),
             findings: vec![Finding::new("demo", FindingKind::CargoFmtRequired, "fmt")],
+            operational: None,
         })
         .await
         .unwrap();
 
-    assert_eq!(knowledge.plan_calls(), 1);
+    assert_eq!(knowledge.plan_calls(), 0);
     assert_eq!(runtime.search_calls(), 0);
     assert_eq!(mock.chat_calls(), 0);
     assert!(!report.llm_invoked);
     assert!(!report.search_used);
-    assert_eq!(report.primary_source, "bindb");
-    assert_eq!(report.inspection_set, vec![PathBuf::from("src/lib.rs")]);
+    assert_eq!(report.primary_source, "discovery");
+    assert!(report.inspection_set.is_empty());
     assert!(report.files_opened.is_empty(), "fmt does not inspect files");
     assert!(report.files_modified.is_empty());
     assert!(report.validation_passed);
@@ -114,6 +123,7 @@ async fn empty_inspection_set_is_ok_when_hygiene_is_deterministic() {
         .execute(HygieneWorkflowRequest {
             request: "hygiene fmt".into(),
             findings: vec![Finding::new("demo", FindingKind::CargoFmtRequired, "fmt")],
+            operational: None,
         })
         .await
         .unwrap();
@@ -122,6 +132,118 @@ async fn empty_inspection_set_is_ok_when_hygiene_is_deterministic() {
     assert!(report.inspection_set.is_empty());
     assert_eq!(mock.chat_calls(), 0);
     assert_eq!(runtime.search_calls(), 0);
+    assert_eq!(knowledge.reindex_calls(), 1);
+}
+
+#[tokio::test]
+async fn badge_reads_readme_without_bindb_inspection_set() {
+    let runtime = Arc::new(cargo_fmt_runtime());
+    let knowledge = Arc::new(MemoryKnowledge::for_files(
+        "hygiene badge",
+        Vec::<PathBuf>::new(),
+    ));
+    let mock = MockAiClient::json_turns_local(["{}", "{}"]);
+    let workflow = HygieneWorkflow::new(
+        runtime.clone(),
+        knowledge.clone(),
+        HygieneConfig::default(),
+        mock.client.clone(),
+    );
+    let report = workflow
+        .execute(HygieneWorkflowRequest {
+            request: "hygiene badge".into(),
+            findings: vec![Finding::new("demo", FindingKind::MissingBadge, "badge")
+                .github_slug("dpkimball/demo")],
+            operational: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(knowledge.plan_calls(), 0);
+    assert_eq!(runtime.search_calls(), 0);
+    assert_eq!(mock.chat_calls(), 0);
+    assert!(report.success);
+    assert_eq!(runtime.read_paths(), vec![PathBuf::from("README.md")]);
+    assert!(runtime.files()[Path::new("README.md")].contains("badge.svg"));
+    assert_eq!(knowledge.reindex_calls(), 1);
+}
+
+#[tokio::test]
+async fn branch_delete_refuses_open_pr_head() {
+    let runtime = Arc::new(cargo_fmt_runtime());
+    let knowledge = Arc::new(MemoryKnowledge::for_files(
+        "hygiene branch",
+        Vec::<PathBuf>::new(),
+    ));
+    let mock = MockAiClient::json_turns_local(["{}", "{}"]);
+    let workflow = HygieneWorkflow::new(
+        runtime.clone(),
+        knowledge.clone(),
+        HygieneConfig::default(),
+        mock.client.clone(),
+    );
+    let report = workflow
+        .execute(HygieneWorkflowRequest {
+            request: "hygiene branch".into(),
+            findings: vec![
+                Finding::new("demo", FindingKind::FeatureBranchMerged, "merged")
+                    .target_ref("feature/old"),
+            ],
+            operational: Some(OperationalContext {
+                default_branch: "master".into(),
+                current_branch: "master".into(),
+                dirty: false,
+                open_pr_heads: vec!["feature/old".into()],
+            }),
+        })
+        .await
+        .unwrap();
+
+    assert!(!report.success);
+    assert!(report.hygiene.outcomes[0].summary.contains("open PR head"));
+    assert_eq!(knowledge.reindex_calls(), 0);
+    assert_eq!(mock.chat_calls(), 0);
+}
+
+#[tokio::test]
+async fn branch_delete_checks_out_default_when_current_and_clean() {
+    let runtime = Arc::new(cargo_fmt_runtime());
+    let knowledge = Arc::new(MemoryKnowledge::for_files(
+        "hygiene branch",
+        Vec::<PathBuf>::new(),
+    ));
+    let mock = MockAiClient::json_turns_local(["{}", "{}"]);
+    let workflow = HygieneWorkflow::new(
+        runtime.clone(),
+        knowledge.clone(),
+        HygieneConfig::default(),
+        mock.client.clone(),
+    );
+    let report = workflow
+        .execute(HygieneWorkflowRequest {
+            request: "hygiene branch".into(),
+            findings: vec![
+                Finding::new("demo", FindingKind::FeatureBranchMerged, "merged")
+                    .target_ref("feature/old"),
+            ],
+            operational: Some(OperationalContext {
+                default_branch: "master".into(),
+                current_branch: "feature/old".into(),
+                dirty: false,
+                open_pr_heads: Vec::new(),
+            }),
+        })
+        .await
+        .unwrap();
+
+    assert!(report.success);
+    let executed = runtime.executed_commands();
+    assert!(executed
+        .iter()
+        .any(|(exe, args)| exe == "git" && args == &["checkout".to_string(), "master".into()]));
+    assert!(executed.iter().any(|(exe, args)| {
+        exe == "git" && args == &["branch".to_string(), "-d".into(), "feature/old".into()]
+    }));
     assert_eq!(knowledge.reindex_calls(), 1);
 }
 
@@ -144,6 +266,7 @@ async fn ai_hygiene_reads_only_the_inspection_set() {
         .execute(HygieneWorkflowRequest {
             request: "hygiene rust bug".into(),
             findings: vec![rust_bug()],
+            operational: None,
         })
         .await
         .unwrap();
@@ -157,6 +280,7 @@ async fn ai_hygiene_reads_only_the_inspection_set() {
         .any(|p| p == Path::new("README.md")));
     assert_eq!(mock.chat_calls(), 2);
     assert!(report.llm_invoked);
+    assert_eq!(report.primary_source, "bindb");
     assert!(report.success);
     assert_eq!(
         runtime.files()[Path::new("src/lib.rs")],
@@ -185,6 +309,7 @@ async fn empty_inspection_set_refuses_ai_without_llm() {
         .execute(HygieneWorkflowRequest {
             request: "hygiene rust bug".into(),
             findings: vec![rust_bug()],
+            operational: None,
         })
         .await
         .unwrap_err();

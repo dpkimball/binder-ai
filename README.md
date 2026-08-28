@@ -138,7 +138,7 @@ let _report = engine.process_findings(runtime, &findings).await;
 
 The workflow git diff is the output. Hygiene never commits, merges, pushes, or opens a PR.
 
-Bindb-first Hygiene (`HygieneWorkflow`): query `Knowledge` before any file inspection, take the inspection set from the graph, skip binder-llm for deterministic findings, re-index and record history after validation. See [docs/specs/hygiene-workflow.md](docs/specs/hygiene-workflow.md).
+Bindb-first Hygiene (`HygieneWorkflow`): consume findings from live discovery, query `Knowledge` only when judgment needs an inspection set, skip binder-llm for deterministic apply, re-index and record history after validation. See [docs/specs/hygiene-workflow.md](docs/specs/hygiene-workflow.md).
 
 Bindb-first engineering (facts from `Knowledge`, no `Runtime::search`):
 

@@ -26,7 +26,7 @@ Binder's AI orchestration layer. Applications never call `binder-llm` directly. 
 - `Runtime` trait (`LocalRuntime` / `MemoryRuntime`) for files, search, structured commands, and git — independent of LLM providers
 - `IssueImplementationWorkflow`: search → plan → edit → `cargo fmt` → `cargo test` → git diff (not a generic engine)
 - `EngineeringWorkflow`: `Knowledge` (bindb) → inspection set → curated `AiClient` context → `Runtime` edits → fmt/test → re-index
-- `HygieneWorkflow`: `Knowledge` (bindb) → existing Hygiene dispatch → skip binder-llm when deterministic → validate → re-index → `record_execution`
+- `HygieneWorkflow`: consume discovery findings → bindb plan only for AI → skip binder-llm when deterministic → validate → re-index → `record_execution`
 
 ## Out of scope
 

@@ -4,63 +4,50 @@ status: spec
 github_issue: https://github.com/dpkimball/binder-ai/issues/16
 ---
 
-# Hygiene from bindb
+# Hygiene apply from bindb
 
-Prove that binder-ai can execute the existing Hygiene workflow using bindb as the primary knowledge source. This POC is the execution model, not AI quality and not new Hygiene features.
+HygieneWorkflow is the **apply** path. It does not replace Hygiene discovery.
 
-## Flow
+Live operational facts (dirty trees, leftover branches, CI, PR heads, nested clones, secrets) stay on the scanner / dashboard / Cursor skill. Forcing those into bindb is the wrong abstraction.
+
+## Principle
+
+- **bindb-first** when the question is application knowledge (which files are implicated, doctrine, re-index after a patch).
+- **Live inspection** when the question is current external/runtime state (git, GitHub, CI).
+
+## Split
 
 ```text
-Hygiene Request
-        │
+Scanner / dashboard / skill
+        │  findings + OperationalContext
         ▼
-binder-ai HygieneWorkflow
+HygieneWorkflow
         │
-        ▼
-Knowledge::plan() / doctrine()
+        ├── bindb Knowledge::plan / doctrine
+        │     only if a finding needs judgment
         │
-        ▼
-Inspection Set (semantic graph)
+        ├── binder-llm (inspection-set files only)
+        │     skipped for deterministic apply
         │
-        ▼
-Reasoning Required?
-      /         \
-     No         Yes
-     │           │
-     │     binder-llm
-     │     (inspection-set files only)
-      \         /
-       ▼
-Existing Hygiene dispatch + Runtime
-       │
-       ▼
-Validate
-       │
-       ▼
-Knowledge::reindex()
-       │
-       ▼
-Knowledge::record_execution()
+        ├── Runtime execute / validate
+        │
+        ├── Knowledge::reindex
+        │
+        └── Knowledge::record_execution
 ```
 
-## Responsibilities
-
-- **bindb (`Knowledge`)** — repository metadata, doctrine, inspection set, prior execution history. Does not decide how Hygiene runs.
-- **binder-ai (`HygieneWorkflow`)** — query bindb first, dispatch existing finding kinds, skip binder-llm when dispatch is deterministic, validate, re-index, record history.
-- **binder-llm** — only when a finding requires judgment (Rust source remediation). Receives curated inspection-set files, never a repository walk.
-
-`HygieneEngine::process_findings` remains the dashboard path and may still `Runtime::search` via `IssueImplementationWorkflow`. This POC does not change that caller.
+`HygieneEngine::process_findings` remains for callers that still search. New apply work uses `HygieneWorkflow`.
 
 ## Rules
 
-- Query bindb before any file inspection.
-- Inspection set comes from the semantic graph (`KnowledgePlan.inspection_set`).
-- Do not call `Runtime::search` on this path.
-- Empty inspection set is allowed for fully deterministic command-only work (`cargo fmt`, clippy `--fix`, `git branch -d`).
-- Empty inspection set plus an AI finding is `KnowledgeFailed` with **0** LLM calls.
-- README badge insertion reads `README.md` only when that path is in the inspection set.
-- Re-index and execution history are recorded only after validation succeeds.
+- Findings are an input. HygieneWorkflow does not walk the board or GitHub.
+- Deterministic apply (fmt, clippy `--fix`, badge, branch `-d`) does not call `Knowledge::plan` and does not require an inspection set.
+- README badge insertion reads the live file; it is not gated on the semantic graph.
+- Branch delete uses `OperationalContext` (default branch, current branch, dirty, open PR heads) with the same guards as dashboard/skill.
+- AI findings query bindb for the inspection set; empty set → `KnowledgeFailed`, 0 LLM calls.
+- After validation succeeds: re-index and record execution history.
+- Production `Knowledge` is `CodeintelKnowledge` (codeintel CLI → Architecture JSON). `MemoryKnowledge` is the test double.
 
 ## Non-goals
 
-New Hygiene finding kinds, parser improvements, IDE/Cursor integration, hosted execution, generic workflow framework.
+New Hygiene finding kinds, parser improvements, IDE/Cursor product integration, hosted dashboard rewrite, generic workflow framework. Dashboard Python apply remains until the worker image ships a binder-ai binary.

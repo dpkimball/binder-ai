@@ -2,24 +2,27 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::client::AiClient;
-use crate::knowledge::{DoctrineSnapshot, ExecutionRecord, Knowledge, ReindexStats};
+use crate::knowledge::{DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgePlan, ReindexStats};
 use crate::runtime::Runtime;
 use crate::workflows::hygiene::config::HygieneConfig;
 use crate::workflows::hygiene::dispatcher;
 use crate::workflows::hygiene::engine::HygieneEngine;
 use crate::workflows::hygiene::finding::Finding;
+use crate::workflows::hygiene::operational::OperationalContext;
 use crate::workflows::hygiene::remediation::{DispatchDecision, RemediationType};
 use crate::workflows::hygiene::result::HygieneReport;
 use crate::workflows::issue::WorkflowError;
 
-/// Hygiene request. Inspection paths come from bindb, not from this struct.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Hygiene apply request. Findings come from live discovery, not from bindb.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HygieneWorkflowRequest {
     pub request: String,
     pub findings: Vec<Finding>,
+    /// Scanner/skill GitHub+git facts. Required for branch-delete guards.
+    pub operational: Option<OperationalContext>,
 }
 
-/// Outcome of [`HygieneWorkflow`]. Metrics prove bindb-first execution.
+/// Outcome of [`HygieneWorkflow`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HygieneWorkflowReport {
     pub success: bool,
@@ -36,12 +39,14 @@ pub struct HygieneWorkflowReport {
     pub reindex: Option<ReindexStats>,
     pub history_recorded: bool,
     pub search_used: bool,
+    /// `discovery` when only operational findings ran; `bindb` when semantic plan was used.
     pub primary_source: &'static str,
 }
 
-/// Bindb-first Hygiene: plan → dispatch existing findings → skip LLM when deterministic → re-index.
+/// Apply path for Hygiene. Discovery stays on the scanner / dashboard / skill.
 ///
-/// Does not search the repository. Inspection paths come from [`Knowledge`].
+/// bindb is queried for application knowledge (inspection set) only when a finding
+/// needs judgment. After a successful apply, re-index and record execution history.
 pub struct HygieneWorkflow<R, K> {
     runtime: R,
     knowledge: K,
@@ -68,39 +73,61 @@ impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
         })
         .await?;
 
-        let planning_started = Instant::now();
-        let plan = phase("knowledge_plan", async {
-            self.knowledge
-                .plan(&request.request)
-                .map_err(WorkflowError::from_knowledge)
-        })
-        .await?;
-        let planning_ms = planning_started.elapsed().as_millis() as u64;
-
-        if plan.primary_source != "bindb" {
-            return Err(WorkflowError::KnowledgeFailed {
-                message: "knowledge plan must declare primary_source bindb".into(),
-            });
-        }
-
         let needs_llm = request.findings.iter().any(|finding| {
             matches!(
                 dispatcher::dispatch(finding, self.engine.config()),
                 DispatchDecision::Ai(_)
             )
         });
-        if needs_llm && plan.inspection_set.is_empty() {
-            return Err(WorkflowError::KnowledgeFailed {
-                message: "empty inspection set; refusing to invoke reasoning without bindb context"
-                    .into(),
-            });
-        }
+
+        let (plan, planning_ms, semantic) = if needs_llm {
+            let planning_started = Instant::now();
+            let plan = phase("knowledge_plan", async {
+                self.knowledge
+                    .plan(&request.request)
+                    .map_err(WorkflowError::from_knowledge)
+            })
+            .await?;
+            let planning_ms = planning_started.elapsed().as_millis() as u64;
+            if plan.primary_source != "bindb" {
+                return Err(WorkflowError::KnowledgeFailed {
+                    message: "knowledge plan must declare primary_source bindb".into(),
+                });
+            }
+            if plan.inspection_set.is_empty() {
+                return Err(WorkflowError::KnowledgeFailed {
+                    message:
+                        "empty inspection set; refusing to invoke reasoning without bindb context"
+                            .into(),
+                });
+            }
+            (plan, planning_ms, true)
+        } else {
+            (
+                KnowledgePlan {
+                    request: request.request.clone(),
+                    interpretation: "operational hygiene; bindb plan not required".into(),
+                    repositories: Vec::new(),
+                    inspection_set: Vec::new(),
+                    rules_must_remain_satisfied: Vec::new(),
+                    likely_affected: Vec::new(),
+                    primary_source: "bindb",
+                },
+                0,
+                false,
+            )
+        };
 
         let mut hygiene = HygieneReport::default();
         for finding in &request.findings {
             let outcome = self
                 .engine
-                .process_one_from_graph(self.runtime.clone(), finding, &plan.inspection_set)
+                .process_one_apply(
+                    self.runtime.clone(),
+                    finding,
+                    &plan.inspection_set,
+                    request.operational.as_ref(),
+                )
                 .await;
             tracing::info!(
                 repository = %outcome.repository,
@@ -178,7 +205,7 @@ impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
             reindex,
             history_recorded,
             search_used: false,
-            primary_source: "bindb",
+            primary_source: if semantic { "bindb" } else { "discovery" },
         })
     }
 }

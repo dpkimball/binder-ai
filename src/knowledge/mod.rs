@@ -1,7 +1,9 @@
 //! Facts from bindb. Not reasoning and not repository traversal.
 
+mod codeintel;
 mod memory;
 
+pub use codeintel::{CodeintelCli, CodeintelKnowledge, ProcessCodeintelCli};
 pub use memory::MemoryKnowledge;
 
 use std::path::PathBuf;
@@ -80,7 +82,7 @@ pub struct ReindexStats {
 }
 
 /// One completed (or attempted) agent workflow, stored as bindb fact.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionRecord {
     pub workflow: String,
     pub request: String,
