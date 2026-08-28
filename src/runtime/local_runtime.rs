@@ -34,12 +34,19 @@ impl LocalRuntime {
         } else {
             normalize(&self.root.join(path))
         };
-        if !joined.starts_with(&self.root) {
+        let contained = std::fs::canonicalize(&joined).unwrap_or_else(|_| {
+            joined
+                .parent()
+                .and_then(|parent| std::fs::canonicalize(parent).ok())
+                .map(|parent| parent.join(joined.file_name().unwrap_or_default()))
+                .unwrap_or_else(|| joined.clone())
+        });
+        if !contained.starts_with(&self.root) {
             return Err(RuntimeError::PathEscape {
                 path: path.display().to_string(),
             });
         }
-        Ok(joined)
+        Ok(contained)
     }
 }
 
@@ -353,6 +360,18 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.kind(), "command");
+    }
+
+    #[tokio::test]
+    async fn execute_accepts_absolute_cwd_that_is_the_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = LocalRuntime::new(dir.path()).unwrap();
+        let result = runtime
+            .execute(Command::new("/bin/echo").cwd(dir.path()).arg("cwd-ok"))
+            .await
+            .unwrap();
+        assert!(result.is_success());
+        assert!(result.stdout.contains("cwd-ok"));
     }
 
     #[tokio::test]

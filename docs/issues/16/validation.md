@@ -29,9 +29,19 @@ Empty inspection set + AI: `knowledge_failed`, 0 LLM calls.
 
 Dashboard `HygieneEngine::process_findings` is unchanged (still searches for AI). Hosted Python apply is unchanged until a binder-ai binary is in the worker image.
 
+## Live proof (`HYGIENE_E2E=1`)
+
+Real git checkout (not `MemoryRuntime`) + `codeintel index` + `CodeintelKnowledge` + `LocalRuntime` + skill-shaped findings (`feature/old`, `cargo fmt`, missing badge) + `OperationalContext`.
+
+Command: `HYGIENE_E2E=1 cargo test --all-features --test hygiene_codeintel_e2e`
+
+Result: **pass**. LLM not invoked. Leftover branch deleted, `src/lib.rs` formatted, README badge inserted, store re-indexed, history JSONL written.
+
+First run failed with `path_escape` on `git`/`cargo` because `LocalRuntime` compared a non-canonical `/var/folders/...` cwd to a canonical `/private/var/folders/...` root. `resolve` now canonicalizes before the containment check. That is the adapter/path issue this proof was meant to catch.
+
 ## Tests
 
-`tests/hygiene_workflow.rs`. `CodeintelKnowledge` JSON mapping tests in `src/knowledge/codeintel.rs`. Full `make b`.
+`tests/hygiene_workflow.rs`, `tests/hygiene_codeintel_e2e.rs` (opt-in). `CodeintelKnowledge` JSON mapping in `src/knowledge/codeintel.rs`. Full `make b`.
 
 ## Not in this milestone
 
