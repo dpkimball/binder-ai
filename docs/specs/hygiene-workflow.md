@@ -2,6 +2,7 @@
 title: Agent Workflow POC #1 — Hygiene from bindb
 status: spec
 github_issue: https://github.com/dpkimball/binder-ai/issues/16
+github_issue_e2e: https://github.com/dpkimball/binder-ai/issues/18
 ---
 
 # Hygiene apply from bindb
