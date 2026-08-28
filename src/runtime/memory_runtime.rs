@@ -25,6 +25,7 @@ pub struct MemoryRuntime {
     write_calls: AtomicU32,
     executed: Mutex<Vec<(String, Vec<String>)>>,
     read_paths: Mutex<Vec<PathBuf>>,
+    write_paths: Mutex<Vec<PathBuf>>,
 }
 
 impl Default for MemoryRuntime {
@@ -51,6 +52,7 @@ impl MemoryRuntime {
             write_calls: AtomicU32::new(0),
             executed: Mutex::new(Vec::new()),
             read_paths: Mutex::new(Vec::new()),
+            write_paths: Mutex::new(Vec::new()),
         }
     }
 
@@ -120,6 +122,13 @@ impl MemoryRuntime {
             .expect("memory runtime mutex")
             .clone()
     }
+
+    pub fn write_paths(&self) -> Vec<PathBuf> {
+        self.write_paths
+            .lock()
+            .expect("memory runtime mutex")
+            .clone()
+    }
 }
 
 #[async_trait]
@@ -148,11 +157,24 @@ impl Runtime for MemoryRuntime {
                 path: path.display().to_string(),
             });
         }
+        let key = normalize_key(path);
+        self.write_paths
+            .lock()
+            .expect("memory runtime mutex")
+            .push(key.clone());
         self.files
             .lock()
             .expect("memory runtime mutex")
-            .insert(normalize_key(path), contents.to_string());
+            .insert(key, contents.to_string());
         Ok(())
+    }
+
+    fn recorded_reads(&self) -> Vec<PathBuf> {
+        self.read_paths()
+    }
+
+    fn recorded_writes(&self) -> Vec<PathBuf> {
+        self.write_paths()
     }
 
     async fn search(&self, request: SearchRequest) -> Result<Vec<SearchResult>> {

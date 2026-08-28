@@ -48,13 +48,13 @@ async fn issue_workflow_runs_end_to_end_in_memory() {
 
     let workflow = IssueImplementationWorkflow::new(runtime.clone(), mock.client.clone());
     let result = workflow
-        .execute(IssueImplementationRequest {
-            issue: Issue::new(
+        .execute(IssueImplementationRequest::new(
+            Issue::new(
                 "add overflow in lib",
                 "The add helper in src/lib.rs overflows on large values.",
             ),
-            repository_root: PathBuf::from("."),
-        })
+            PathBuf::from("."),
+        ))
         .await
         .unwrap();
 
@@ -80,6 +80,55 @@ async fn issue_workflow_runs_end_to_end_in_memory() {
     assert!(result.success);
     assert_eq!(result.modified_files, vec![PathBuf::from("src/lib.rs")]);
     assert_eq!(result.command_results.len(), 2);
+}
+
+#[tokio::test]
+async fn issue_workflow_inspection_set_skips_search() {
+    let original = "pub fn add(a: i32, b: i32) -> i32 { a + b }\n";
+    let updated = "pub fn add(a: i32, b: i32) -> i32 { a.saturating_add(b) }\n";
+    let runtime = Arc::new(
+        MemoryRuntime::new()
+            .with_file("src/lib.rs", original)
+            .with_file("README.md", "unrelated\n")
+            .script(Command::new("cargo").arg("fmt"), CommandResult::success(""))
+            .script(
+                Command::new("cargo").arg("test"),
+                CommandResult::success("test result: ok. 1 passed"),
+            )
+            .with_git_diff(GitDiff {
+                branch: "feature/runtime-abstraction".into(),
+                patch: "diff --git a/src/lib.rs b/src/lib.rs\n+saturating_add\n".into(),
+            }),
+    );
+    let plan = serde_json::json!({
+        "files": ["src/lib.rs"],
+        "steps": ["use saturating_add"],
+        "summary": "Prevent overflow in add"
+    });
+    let edits = serde_json::json!({
+        "edits": [{
+            "path": "src/lib.rs",
+            "contents": updated
+        }],
+        "summary": "Updated add to saturating_add"
+    });
+    let mock = MockAiClient::json_turns([plan.to_string(), edits.to_string()]);
+    let workflow = IssueImplementationWorkflow::new(runtime.clone(), mock.client.clone());
+    let result = workflow
+        .execute(
+            IssueImplementationRequest::new(
+                Issue::new("add overflow in lib", "The add helper overflows."),
+                PathBuf::from("."),
+            )
+            .with_inspection_set(vec![PathBuf::from("src/lib.rs")]),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(runtime.search_calls(), 0);
+    assert_eq!(runtime.read_paths(), vec![PathBuf::from("src/lib.rs")]);
+    assert!(result.success);
+    assert_eq!(runtime.files()[Path::new("src/lib.rs")], updated);
 }
 
 #[test]

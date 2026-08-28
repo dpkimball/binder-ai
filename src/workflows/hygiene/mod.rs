@@ -7,6 +7,7 @@ mod engine;
 mod finding;
 mod remediation;
 mod result;
+mod workflow;
 
 pub use config::HygieneConfig;
 pub use dispatcher::dispatch;
@@ -14,3 +15,4 @@ pub use engine::HygieneEngine;
 pub use finding::{Finding, FindingKind, ProjectKind, Severity};
 pub use remediation::{AutoRemediation, DeterministicAction, DispatchDecision, RemediationType};
 pub use result::{FindingOutcome, HygieneReport};
+pub use workflow::{HygieneWorkflow, HygieneWorkflowReport, HygieneWorkflowRequest};

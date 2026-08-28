@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::client::AiClient;
@@ -7,7 +8,9 @@ use crate::workflows::hygiene::config::HygieneConfig;
 use crate::workflows::hygiene::deterministic;
 use crate::workflows::hygiene::dispatcher;
 use crate::workflows::hygiene::finding::Finding;
-use crate::workflows::hygiene::remediation::{DispatchDecision, RemediationType};
+use crate::workflows::hygiene::remediation::{
+    DeterministicAction, DispatchDecision, RemediationType,
+};
 use crate::workflows::hygiene::result::{FindingOutcome, HygieneReport};
 use crate::workflows::issue::{
     Issue, IssueImplementationRequest, IssueImplementationResult, IssueImplementationWorkflow,
@@ -107,6 +110,142 @@ impl HygieneEngine {
         }
     }
 
+    /// Same dispatch as [`Self::process_findings`], but AI reads only graph paths.
+    pub(crate) async fn process_one_from_graph<R>(
+        &self,
+        runtime: R,
+        finding: &Finding,
+        inspection_set: &[PathBuf],
+    ) -> FindingOutcome
+    where
+        R: Runtime,
+    {
+        match dispatcher::dispatch(finding, &self.config) {
+            DispatchDecision::ReportOnly => report_only(finding, "report_only"),
+            DispatchDecision::Deterministic(action) => {
+                if matches!(action, DeterministicAction::InsertBadge { .. })
+                    && !inspection_contains(inspection_set, Path::new("README.md"))
+                {
+                    return FindingOutcome {
+                        repository: finding.repository.clone(),
+                        finding: finding.kind,
+                        remediation: RemediationType::Deterministic,
+                        success: false,
+                        diff_generated: false,
+                        tests_passed: None,
+                        summary: "README.md is not in the bindb inspection set".into(),
+                        git_diff: None,
+                    };
+                }
+                match deterministic::apply(
+                    &runtime,
+                    &action,
+                    &finding.repository_root,
+                    self.config.dry_run,
+                )
+                .await
+                {
+                    Ok(applied) => FindingOutcome {
+                        repository: finding.repository.clone(),
+                        finding: finding.kind,
+                        remediation: RemediationType::Deterministic,
+                        success: true,
+                        diff_generated: false,
+                        tests_passed: None,
+                        summary: applied.summary,
+                        git_diff: applied.git_diff,
+                    },
+                    Err(err) => FindingOutcome {
+                        repository: finding.repository.clone(),
+                        finding: finding.kind,
+                        remediation: RemediationType::Deterministic,
+                        success: false,
+                        diff_generated: false,
+                        tests_passed: None,
+                        summary: err.summary,
+                        git_diff: None,
+                    },
+                }
+            }
+            DispatchDecision::Ai(kind) => {
+                if inspection_set.is_empty() {
+                    return FindingOutcome {
+                        repository: finding.repository.clone(),
+                        finding: finding.kind,
+                        remediation: RemediationType::Ai,
+                        success: false,
+                        diff_generated: false,
+                        tests_passed: None,
+                        summary: "empty inspection set; refusing binder-llm".into(),
+                        git_diff: None,
+                    };
+                }
+                self.remediate_ai_curated(runtime, finding, kind.as_str(), inspection_set)
+                    .await
+            }
+        }
+    }
+
+    async fn remediate_ai_curated<R>(
+        &self,
+        runtime: R,
+        finding: &Finding,
+        kind: &str,
+        inspection_set: &[PathBuf],
+    ) -> FindingOutcome
+    where
+        R: Runtime,
+    {
+        if self.config.dry_run {
+            return FindingOutcome {
+                repository: finding.repository.clone(),
+                finding: finding.kind,
+                remediation: RemediationType::Ai,
+                success: true,
+                diff_generated: false,
+                tests_passed: None,
+                summary: format!("dry_run: would invoke {kind}"),
+                git_diff: None,
+            };
+        }
+        if let Some(reason) = self.ai_blocked_reason(finding) {
+            return FindingOutcome {
+                repository: finding.repository.clone(),
+                finding: finding.kind,
+                remediation: RemediationType::Ai,
+                success: false,
+                diff_generated: false,
+                tests_passed: None,
+                summary: reason,
+                git_diff: None,
+            };
+        }
+        self.mark_ai_repo(&finding.repository);
+
+        let workflow = IssueImplementationWorkflow::new(runtime, self.ai.clone());
+        let request = IssueImplementationRequest::new(
+            Issue::new(
+                format!("{} in {}", finding.kind, finding.repository),
+                issue_body(finding),
+            ),
+            finding.repository_root.clone(),
+        )
+        .with_inspection_set(inspection_set.to_vec());
+        match workflow.execute(request).await {
+            Ok(result) => validate_ai_result(finding, result),
+            Err(err) => FindingOutcome {
+                repository: finding.repository.clone(),
+                finding: finding.kind,
+                remediation: RemediationType::Ai,
+                success: false,
+                diff_generated: false,
+                tests_passed: None,
+                summary: format!("workflow failed: {}", err.kind()),
+                git_diff: None,
+            },
+        }
+    }
+
     async fn remediate_ai<R>(&self, runtime: R, finding: &Finding, kind: &str) -> FindingOutcome
     where
         R: Runtime,
@@ -138,13 +277,13 @@ impl HygieneEngine {
         self.mark_ai_repo(&finding.repository);
 
         let workflow = IssueImplementationWorkflow::new(runtime, self.ai.clone());
-        let request = IssueImplementationRequest {
-            issue: Issue::new(
+        let request = IssueImplementationRequest::new(
+            Issue::new(
                 format!("{} in {}", finding.kind, finding.repository),
                 issue_body(finding),
             ),
-            repository_root: finding.repository_root.clone(),
-        };
+            finding.repository_root.clone(),
+        );
         match workflow.execute(request).await {
             Ok(result) => validate_ai_result(finding, result),
             Err(err) => FindingOutcome {
@@ -236,4 +375,24 @@ fn validate_ai_result(finding: &Finding, result: IssueImplementationResult) -> F
         summary,
         git_diff: Some(result.git_diff),
     }
+}
+
+fn inspection_contains(set: &[PathBuf], path: &Path) -> bool {
+    let want = normalize(path);
+    set.iter().any(|candidate| normalize(candidate) == want)
+}
+
+fn normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {}
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::Normal(s) => out.push(s),
+        }
+    }
+    out
 }

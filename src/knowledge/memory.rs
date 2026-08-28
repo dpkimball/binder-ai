@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
 
-use super::{DoctrineSnapshot, Knowledge, KnowledgeError, KnowledgePlan, ReindexStats};
+use super::{
+    DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError, KnowledgePlan, ReindexStats,
+};
 
 /// In-memory bindb stand-in for tests. Never walks a repository or calls an LLM.
 #[derive(Debug)]
@@ -10,6 +13,7 @@ pub struct MemoryKnowledge {
     doctrine: DoctrineSnapshot,
     reindex_calls: AtomicU32,
     plan_calls: AtomicU32,
+    history: Mutex<Vec<ExecutionRecord>>,
 }
 
 impl MemoryKnowledge {
@@ -19,6 +23,7 @@ impl MemoryKnowledge {
             doctrine,
             reindex_calls: AtomicU32::new(0),
             plan_calls: AtomicU32::new(0),
+            history: Mutex::new(Vec::new()),
         }
     }
 
@@ -52,6 +57,10 @@ impl MemoryKnowledge {
     pub fn plan_calls(&self) -> u32 {
         self.plan_calls.load(Ordering::SeqCst)
     }
+
+    pub fn execution_history(&self) -> Vec<ExecutionRecord> {
+        self.history.lock().expect("memory knowledge mutex").clone()
+    }
 }
 
 impl Knowledge for MemoryKnowledge {
@@ -70,5 +79,17 @@ impl Knowledge for MemoryKnowledge {
             repositories: self.plan.repositories.clone(),
             skipped: false,
         })
+    }
+
+    fn record_execution(&self, record: ExecutionRecord) -> std::result::Result<(), KnowledgeError> {
+        self.history
+            .lock()
+            .expect("memory knowledge mutex")
+            .push(record);
+        Ok(())
+    }
+
+    fn execution_history(&self) -> std::result::Result<Vec<ExecutionRecord>, KnowledgeError> {
+        Ok(self.history.lock().expect("memory knowledge mutex").clone())
     }
 }
