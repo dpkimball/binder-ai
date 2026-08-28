@@ -13,4 +13,4 @@ cargo run --all-features --example hygiene_apply -- \
 
 `apply.json` is `SkillApplyDocument`: `request`, `findings[]` (`kind`, `repository_root`, optional `target_ref` / `github_slug` / `project`), `operational` (default/current branch, dirty, open PR heads).
 
-Deterministic kinds only in this example. Hosted dashboard Python apply is unchanged.
+Deterministic kinds only unless `BINDER_AI_LIVE_LLM=1` (LocalOnly catalog discovery, currently Ollama). Hosted dashboard Python apply is unchanged.

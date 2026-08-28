@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use binder_ai::{
-    dispatch, CodeintelKnowledge, DispatchDecision, HygieneConfig, HygieneWorkflow, LocalRuntime,
-    MockAiClient, ProcessCodeintelCli, SkillApplyDocument, SkillApplyReport,
+    dispatch, AiClient, CodeintelKnowledge, DispatchDecision, HygieneConfig, HygieneWorkflow,
+    LocalRuntime, MockAiClient, ProcessCodeintelCli, RoutingPolicy, SkillApplyDocument,
+    SkillApplyReport,
 };
 
 #[tokio::main]
@@ -44,9 +45,10 @@ async fn run() -> Result<(), String> {
         .findings
         .iter()
         .any(|finding| matches!(dispatch(finding, &config), DispatchDecision::Ai(_)));
-    if needs_ai {
+    let live_llm = env::var("BINDER_AI_LIVE_LLM").ok().as_deref() == Some("1");
+    if needs_ai && !live_llm {
         return Err(
-            "AI findings are not applied by this example; keep the skill JSON deterministic".into(),
+            "AI findings require BINDER_AI_LIVE_LLM=1 (LocalOnly catalog discovery)".into(),
         );
     }
 
@@ -58,18 +60,28 @@ async fn run() -> Result<(), String> {
             bin: PathBuf::from(codeintel),
         },
     );
-    let mock = MockAiClient::json_turns_local(["{}", "{}"]);
-    let workflow = HygieneWorkflow::new(runtime, knowledge, config, mock.client.clone());
-    let report = workflow
-        .execute(request)
-        .await
-        .map_err(|err| err.to_string())?;
-    if mock.chat_calls() != 0 {
-        return Err(format!(
-            "deterministic skill apply invoked binder-llm {} time(s)",
-            mock.chat_calls()
-        ));
-    }
+    let report = if needs_ai {
+        let ai = AiClient::builder()
+            .routing_policy(RoutingPolicy::LocalOnly)
+            .build();
+        HygieneWorkflow::new(runtime, knowledge, config, ai)
+            .execute(request)
+            .await
+            .map_err(|err| err.to_string())?
+    } else {
+        let mock = MockAiClient::json_turns_local(["{}", "{}"]);
+        let report = HygieneWorkflow::new(runtime, knowledge, config, mock.client.clone())
+            .execute(request)
+            .await
+            .map_err(|err| err.to_string())?;
+        if mock.chat_calls() != 0 {
+            return Err(format!(
+                "deterministic skill apply invoked binder-llm {} time(s)",
+                mock.chat_calls()
+            ));
+        }
+        report
+    };
     let json = serde_json::to_string_pretty(&SkillApplyReport::from_workflow(&report))
         .map_err(|err| err.to_string())?;
     println!("{json}");

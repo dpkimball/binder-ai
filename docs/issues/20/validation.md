@@ -40,3 +40,11 @@ Outcomes: deleted `feature/old`; `cargo fmt`; inserted CI badge. After: only `ma
 - `HYGIENE_SKILL=1 cargo test --all-features --test hygiene_skill_apply` (skill-shaped discovery in-process)
 
 Default `make b` skips the live test unless `HYGIENE_SKILL=1`.
+
+## Later live proofs (same branch)
+
+**Real workspace (`codeintel`):** leftover `feat/autonomous-workflow` (PR #12 squash-merged, two-dot identical to `origin/master`). Skill JSON → `hygiene_apply`: checked out `master`, `git branch -d` succeeded, `llm_invoked: false`. Then `git pull --ff-only origin master`. Remote `origin/feat/autonomous-workflow` still exists.
+
+**Hosted Python (dev board):** `POST /api/hygiene?dry_run=true&repo=workspace-host` → request 381, worker wrote one `report_only` outcome (`feature/rename-volume-ssd` has a real tree vs `master`). No mutations. Python apply path not replaced.
+
+**Live binder-llm:** `BINDER_AI_LIVE_LLM=1` on `/tmp/hygiene-ai-live` (tiny Cargo git crate, not a workspace project). bindb plan inspection set `[src/lib.rs]`. Ollama `qwen3-coder:30b`: `llm_invoked: true`, `primary_source: bindb`, `add` → `saturating_add`, tests passed (~36s).
