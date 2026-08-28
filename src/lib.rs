@@ -70,7 +70,8 @@ pub use workflows::{
     HygieneConfig, HygieneEngine, HygieneReport, HygieneWorkflow, HygieneWorkflowReport,
     HygieneWorkflowRequest, ImplementationPlan, Issue, IssueImplementationRequest,
     IssueImplementationResult, IssueImplementationWorkflow, OperationalContext, ProjectKind,
-    RemediationType, Severity, WorkflowError,
+    RemediationType, Severity, SkillApplyDocument, SkillApplyReport, SkillFindingJson,
+    SkillOperationalJson, SkillOutcomeJson, WorkflowError,
 };
 
 /// Spec alias: callers describe a task, not a vendor.

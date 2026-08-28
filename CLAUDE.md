@@ -10,7 +10,7 @@ Do **not** add HTTP clients, provider SDKs, auth, or provider JSON mapping. Thos
 
 Do **not** walk the repository to discover architecture when bindb can answer. Query [`Knowledge`] first.
 
-Do **not** add REST APIs. This is a library.
+Do **not** add REST APIs. This is a library. The `hygiene_apply` example is the Cursor skill adapter (JSON in, HygieneWorkflow out), not a hosted service.
 
 Do **not** create a `binder-runtime` crate. Keep `Runtime` here until multiple applications need it independently.
 

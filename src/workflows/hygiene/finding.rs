@@ -34,6 +34,24 @@ impl FindingKind {
             Self::Unknown => "unknown",
         }
     }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "feature_branch_merged" => Self::FeatureBranchMerged,
+            "feature_branch_stale" => Self::FeatureBranchStale,
+            "open_pull_request" => Self::OpenPullRequest,
+            "dirty_repository" => Self::DirtyRepository,
+            "broken_pipeline" => Self::BrokenPipeline,
+            "missing_badge" => Self::MissingBadge,
+            "cargo_fmt_required" => Self::CargoFmtRequired,
+            "clippy_warnings" => Self::ClippyWarnings,
+            "missing_tests" => Self::MissingTests,
+            "rust_bug" => Self::RustBug,
+            "documentation_issue" => Self::DocumentationIssue,
+            "unknown" => Self::Unknown,
+            _ => return None,
+        })
+    }
 }
 
 impl std::fmt::Display for FindingKind {
@@ -54,6 +72,23 @@ pub enum Severity {
 pub enum ProjectKind {
     RustCargo,
     Other,
+}
+
+impl ProjectKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RustCargo => "rust_cargo",
+            Self::Other => "other",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "rust_cargo" => Self::RustCargo,
+            "other" => Self::Other,
+            _ => return None,
+        })
+    }
 }
 
 /// A single deterministic inspection result. Hygiene produces these; the
