@@ -92,9 +92,7 @@ Concrete sequence, not a framework: search and read via `Runtime` **or** read a 
 
 ## HygieneWorkflow
 
-Apply path only. Findings and `OperationalContext` come from the scanner / dashboard / skill. bindb `Knowledge::plan` runs only for AI findings. Deterministic fmt/clippy/badge/branch-delete skip the LLM. Branch delete uses the same PR-head / dirty-checkout guards as dashboard hygiene. README badge reads the live file. After validation: `reindex` + `record_execution`. Production knowledge: `CodeintelKnowledge`. Tests: `MemoryKnowledge`. `Runtime::search` is not used. Dashboard `HygieneEngine::process_findings` and Python `run_hygiene` are unchanged. The Cursor skill apply adapter is `examples/hygiene_apply.rs` plus `SkillApplyDocument` JSON.
-
-## HygieneEngine
+Apply path only. Findings and `OperationalContext` come from the scanner / dashboard / skill. bindb `Knowledge::plan` runs only for AI findings. Deterministic fmt/clippy/badge/branch-delete skip the LLM. Branch delete uses the same PR-head / dirty-checkout guards as dashboard hygiene. README badge reads the live file. After validation: `reindex` + `record_execution`. Production knowledge: `CodeintelKnowledge`. Tests: `MemoryKnowledge`. `Runtime::search` is not used. Dashboard `HygieneEngine::process_findings` and Python `run_hygiene` are unchanged. The Cursor skill apply adapter is `src/bin/hygiene_apply.rs` plus `SkillApplyDocument` JSON. Live Ollama uses `OLLAMA_HOST`.
 
 ## HygieneEngine
 
