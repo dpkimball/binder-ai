@@ -10,6 +10,7 @@ flowchart TD
   knowledge["binder-ai Knowledge"]
   bindb["bindb facts"]
   hygiene["HygieneEngine dispatcher"]
+  hygieneWf["HygieneWorkflow"]
   wf["IssueImplementationWorkflow"]
   eng["EngineeringWorkflow"]
   catalog["Model Catalog"]
@@ -21,6 +22,10 @@ flowchart TD
   hygiene --> runtime
   hygiene -->|"Rust source findings"| wf
   hygiene -->|"fmt / clippy --fix / badges / branch -d"| runtime
+  apps --> hygieneWf
+  hygieneWf --> knowledge
+  hygieneWf --> hygiene
+  hygieneWf --> runtime
   apps --> ai
   apps --> runtime
   apps --> wf
@@ -83,7 +88,13 @@ Concrete bindb-first sequence: `Knowledge::plan` / `doctrine` → read **only** 
 
 ## IssueImplementationWorkflow
 
-Concrete sequence, not a framework: search and read via `Runtime` → plan JSON via `AiClient` → file edits via `AiClient` → `write_file` → `cargo fmt` / `cargo test` via structured `Command` → `git_diff`. Tests use `MemoryRuntime` and `MockAiClient`.
+Concrete sequence, not a framework: search and read via `Runtime` **or** read a supplied inspection set (no search) → plan JSON via `AiClient` → file edits via `AiClient` → `write_file` → `cargo fmt` / `cargo test` via structured `Command` → `git_diff`. Tests use `MemoryRuntime` and `MockAiClient`.
+
+## HygieneWorkflow
+
+Apply path only. Findings and `OperationalContext` come from the scanner / dashboard / skill. bindb `Knowledge::plan` runs only for AI findings. Deterministic fmt/clippy/badge/branch-delete skip the LLM. Branch delete uses the same PR-head / dirty-checkout guards as dashboard hygiene. README badge reads the live file. After validation: `reindex` + `record_execution`. Production knowledge: `CodeintelKnowledge`. Tests: `MemoryKnowledge`. `Runtime::search` is not used. Dashboard `HygieneEngine::process_findings` is unchanged.
+
+## HygieneEngine
 
 ## HygieneEngine
 

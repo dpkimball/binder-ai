@@ -24,10 +24,10 @@ src/
   prompt/, context/, conversation.rs, session.rs
   tools/, telemetry/, cache/, providers/, planners/
   runtime/                           # LocalRuntime + MemoryRuntime
-  knowledge/                         # bindb facts (Knowledge trait + MemoryKnowledge)
-  workflows/issue/                   # IssueImplementationWorkflow (search-based hygiene path)
+  knowledge/                         # bindb facts (Knowledge, MemoryKnowledge, CodeintelKnowledge)
+  workflows/issue/                   # IssueImplementationWorkflow (search unless inspection_set)
   workflows/engineering/             # bindb-first EngineeringWorkflow
-  workflows/hygiene/                 # findings, dispatcher, optional Rust AI remediation
+  workflows/hygiene/                 # HygieneEngine (legacy search apply) + HygieneWorkflow (discovery in, apply out)
 ```
 
 Built-in prompts live in `prompt/mod.rs`. Catalog routing lives in `routing/selector.rs` and `models/`. Workflows must use `Runtime` instead of `std::fs` / `Command` / `git2`.

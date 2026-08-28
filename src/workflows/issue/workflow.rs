@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::client::AiClient;
@@ -26,7 +27,7 @@ impl<R: Runtime> IssueImplementationWorkflow<R> {
         &self,
         request: IssueImplementationRequest,
     ) -> Result<IssueImplementationResult, WorkflowError> {
-        let files = phase("search", async { self.search_and_read(&request).await }).await?;
+        let files = phase("inspect", async { self.inspect(&request).await }).await?;
         let plan = phase("planning", async {
             planner::plan(&self.ai, &request.issue, &files).await
         })
@@ -36,8 +37,20 @@ impl<R: Runtime> IssueImplementationWorkflow<R> {
         })
         .await?;
 
+        let allowed = request
+            .inspection_set
+            .as_ref()
+            .map(|paths| paths.iter().map(normalize).collect::<BTreeSet<PathBuf>>());
+
         let mut modified = Vec::new();
         for edit in &generated.edits {
+            if let Some(allowed) = &allowed {
+                if !allowed.contains(&normalize(&edit.path)) {
+                    return Err(WorkflowError::ImplementationFailed {
+                        message: "edit outside inspection set".into(),
+                    });
+                }
+            }
             self.runtime
                 .write_file(&edit.path, &edit.contents)
                 .await
@@ -69,6 +82,42 @@ impl<R: Runtime> IssueImplementationWorkflow<R> {
             git_diff,
             summary: summary_text(&plan, &generated.summary),
         })
+    }
+
+    async fn inspect(
+        &self,
+        request: &IssueImplementationRequest,
+    ) -> Result<Vec<(PathBuf, String)>, WorkflowError> {
+        if let Some(paths) = &request.inspection_set {
+            return self.read_listed(paths).await;
+        }
+        self.search_and_read(request).await
+    }
+
+    async fn read_listed(
+        &self,
+        paths: &[PathBuf],
+    ) -> Result<Vec<(PathBuf, String)>, WorkflowError> {
+        let mut files = Vec::new();
+        for path in paths.iter().take(MAX_FILES) {
+            match self.runtime.read_file(path).await {
+                Ok(contents) => files.push((path.clone(), contents)),
+                Err(err) => {
+                    tracing::info!(
+                        phase = "inspect",
+                        path = %path.display(),
+                        error_kind = err.kind(),
+                        "workflow.read_skip"
+                    );
+                }
+            }
+        }
+        if files.is_empty() {
+            return Err(WorkflowError::KnowledgeFailed {
+                message: "inspection set files were not readable".into(),
+            });
+        }
+        Ok(files)
     }
 
     async fn search_and_read(
@@ -139,6 +188,21 @@ fn summary_text(plan: &ImplementationPlan, implementation: &str) -> String {
     } else {
         implementation.to_string()
     }
+}
+
+fn normalize(path: impl AsRef<Path>) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.as_ref().components() {
+        match component {
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {}
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::Normal(s) => out.push(s),
+        }
+    }
+    out
 }
 
 async fn phase<T, F>(name: &'static str, work: F) -> Result<T, WorkflowError>

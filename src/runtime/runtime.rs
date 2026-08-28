@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
@@ -25,6 +25,16 @@ pub trait Runtime: Send + Sync {
     async fn git_status(&self) -> Result<GitStatus>;
 
     async fn git_diff(&self) -> Result<GitDiff>;
+
+    /// Paths `read_file` opened. Default empty; `MemoryRuntime` records them for tests.
+    fn recorded_reads(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+
+    /// Paths `write_file` wrote. Default empty; `MemoryRuntime` records them for tests.
+    fn recorded_writes(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
 }
 
 /// Working-tree status plus the current branch.
@@ -89,5 +99,13 @@ where
 
     async fn git_diff(&self) -> Result<GitDiff> {
         (**self).git_diff().await
+    }
+
+    fn recorded_reads(&self) -> Vec<PathBuf> {
+        (**self).recorded_reads()
+    }
+
+    fn recorded_writes(&self) -> Vec<PathBuf> {
+        (**self).recorded_writes()
     }
 }

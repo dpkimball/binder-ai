@@ -1,7 +1,9 @@
 //! Facts from bindb. Not reasoning and not repository traversal.
 
+mod codeintel;
 mod memory;
 
+pub use codeintel::{CodeintelCli, CodeintelKnowledge, ProcessCodeintelCli};
 pub use memory::MemoryKnowledge;
 
 use std::path::PathBuf;
@@ -11,6 +13,8 @@ pub trait Knowledge: Send + Sync {
     fn plan(&self, request: &str) -> std::result::Result<KnowledgePlan, KnowledgeError>;
     fn doctrine(&self) -> std::result::Result<DoctrineSnapshot, KnowledgeError>;
     fn reindex(&self) -> std::result::Result<ReindexStats, KnowledgeError>;
+    fn record_execution(&self, record: ExecutionRecord) -> std::result::Result<(), KnowledgeError>;
+    fn execution_history(&self) -> std::result::Result<Vec<ExecutionRecord>, KnowledgeError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -38,6 +42,14 @@ impl<K: Knowledge + ?Sized> Knowledge for std::sync::Arc<K> {
 
     fn reindex(&self) -> std::result::Result<ReindexStats, KnowledgeError> {
         (**self).reindex()
+    }
+
+    fn record_execution(&self, record: ExecutionRecord) -> std::result::Result<(), KnowledgeError> {
+        (**self).record_execution(record)
+    }
+
+    fn execution_history(&self) -> std::result::Result<Vec<ExecutionRecord>, KnowledgeError> {
+        (**self).execution_history()
     }
 }
 
@@ -67,4 +79,16 @@ pub struct DoctrineSnapshot {
 pub struct ReindexStats {
     pub repositories: Vec<String>,
     pub skipped: bool,
+}
+
+/// One completed (or attempted) agent workflow, stored as bindb fact.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExecutionRecord {
+    pub workflow: String,
+    pub request: String,
+    pub inspection_set: Vec<PathBuf>,
+    pub files_opened: Vec<PathBuf>,
+    pub files_modified: Vec<PathBuf>,
+    pub llm_invoked: bool,
+    pub validation_passed: bool,
 }

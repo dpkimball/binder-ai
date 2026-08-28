@@ -24,4 +24,21 @@ impl Issue {
 pub struct IssueImplementationRequest {
     pub issue: Issue,
     pub repository_root: PathBuf,
+    /// When set, read these graph paths only. Do not search the repository.
+    pub inspection_set: Option<Vec<PathBuf>>,
+}
+
+impl IssueImplementationRequest {
+    pub fn new(issue: Issue, repository_root: impl Into<PathBuf>) -> Self {
+        Self {
+            issue,
+            repository_root: repository_root.into(),
+            inspection_set: None,
+        }
+    }
+
+    pub fn with_inspection_set(mut self, files: impl Into<Vec<PathBuf>>) -> Self {
+        self.inspection_set = Some(files.into());
+        self
+    }
 }

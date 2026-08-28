@@ -18,7 +18,8 @@ Architectural context comes from bindb (`Knowledge`) before any LLM call. See [d
 - Semantic retries, token budgets, cost estimates, tracing metadata
 - `Runtime` for files, search, structured commands, and git (not LLM providers)
 - `IssueImplementationWorkflow` for a single concrete issue → plan → edit → fmt → test → diff path
-- `HygieneEngine` for optional Rust source remediation from deterministic repository findings (inspection stays outside this crate)
+- `HygieneEngine` for optional Rust source remediation from deterministic repository findings (inspection stays outside this crate). Dashboard AI still uses `IssueImplementationWorkflow` search.
+- `HygieneWorkflow` for bindb-first Hygiene: query `Knowledge`, skip binder-llm when dispatch is deterministic, validate, re-index, record execution history
 - `EngineeringWorkflow` for bindb-first engineering: query `Knowledge`, open only the inspection set, invoke binder-llm, validate, re-index
 
 HTTP, provider SDKs, authentication, and request mapping stay in `binder-llm`.
@@ -136,6 +137,8 @@ let _report = engine.process_findings(runtime, &findings).await;
 ```
 
 The workflow git diff is the output. Hygiene never commits, merges, pushes, or opens a PR.
+
+Bindb-first Hygiene (`HygieneWorkflow`): consume findings from live discovery, query `Knowledge` only when judgment needs an inspection set, skip binder-llm for deterministic apply, re-index and record history after validation. See [docs/specs/hygiene-workflow.md](docs/specs/hygiene-workflow.md).
 
 Bindb-first engineering (facts from `Knowledge`, no `Runtime::search`):
 

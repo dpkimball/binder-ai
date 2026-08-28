@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::runtime::{Command, CommandResult, Runtime};
+use crate::workflows::hygiene::operational::OperationalContext;
 use crate::workflows::hygiene::remediation::DeterministicAction;
 
 /// Apply a deterministic repair through [`Runtime`]. Never calls [`crate::AiClient`].
@@ -9,6 +10,7 @@ pub async fn apply<R: Runtime>(
     action: &DeterministicAction,
     cwd: &Path,
     dry_run: bool,
+    operational: Option<&OperationalContext>,
 ) -> Result<ApplyOutcome, ApplyError> {
     if dry_run {
         return Ok(ApplyOutcome {
@@ -18,20 +20,7 @@ pub async fn apply<R: Runtime>(
     }
     match action {
         DeterministicAction::DeleteMergedBranch { name } => {
-            let result = execute(
-                runtime,
-                Command::new("git").args(["branch", "-d", name]).cwd(cwd),
-            )
-            .await?;
-            if !result.is_success() {
-                return Err(ApplyError {
-                    summary: format!("git branch -d failed: exit {}", result.exit_code),
-                });
-            }
-            Ok(ApplyOutcome {
-                summary: format!("deleted local branch {name}"),
-                git_diff: None,
-            })
+            delete_merged_branch(runtime, cwd, name, operational).await
         }
         DeterministicAction::CargoFmt => {
             let result = execute(runtime, Command::new("cargo").arg("fmt").cwd(cwd)).await?;
@@ -76,6 +65,50 @@ fn action_name(action: &DeterministicAction) -> &'static str {
         DeterministicAction::ClippyFix => "clippy_fix",
         DeterministicAction::InsertBadge { .. } => "insert_badge",
     }
+}
+
+async fn delete_merged_branch<R: Runtime>(
+    runtime: &R,
+    cwd: &Path,
+    name: &str,
+    operational: Option<&OperationalContext>,
+) -> Result<ApplyOutcome, ApplyError> {
+    if let Some(ctx) = operational {
+        if let Some(reason) = ctx.delete_blocked_reason(name) {
+            return Err(ApplyError { summary: reason });
+        }
+        if ctx.needs_checkout_before_delete(name) {
+            let checkout = execute(
+                runtime,
+                Command::new("git")
+                    .args(["checkout", &ctx.default_branch])
+                    .cwd(cwd),
+            )
+            .await?;
+            if !checkout.is_success() {
+                return Err(ApplyError {
+                    summary: format!(
+                        "git checkout {} failed: exit {}",
+                        ctx.default_branch, checkout.exit_code
+                    ),
+                });
+            }
+        }
+    }
+    let result = execute(
+        runtime,
+        Command::new("git").args(["branch", "-d", name]).cwd(cwd),
+    )
+    .await?;
+    if !result.is_success() {
+        return Err(ApplyError {
+            summary: format!("git branch -d failed: exit {}", result.exit_code),
+        });
+    }
+    Ok(ApplyOutcome {
+        summary: format!("deleted local branch {name}"),
+        git_diff: None,
+    })
 }
 
 async fn execute<R: Runtime>(runtime: &R, command: Command) -> Result<CommandResult, ApplyError> {
