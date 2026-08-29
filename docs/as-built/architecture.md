@@ -4,7 +4,8 @@
 
 ```mermaid
 flowchart TD
-  apps["binder-server / binder-cloud / binder-desktop / binder-cli / Repository Hygiene"]
+  apps["binder-server / binder-cloud / binder-desktop / binder-cli / Repository Hygiene / IDEs"]
+  intel["binder-ai-plan / POST /plan"]
   ai["binder-ai AiClient"]
   runtime["binder-ai Runtime"]
   knowledge["binder-ai Knowledge"]
@@ -19,6 +20,8 @@ flowchart TD
   llm["binder-llm LlmClient"]
   providers["Ollama / OpenAI / Anthropic / xAI / Gemini"]
   env["files / git / cargo / search"]
+  apps --> intel
+  intel --> knowledge
   apps --> hygiene
   hygiene --> runtime
   hygiene -->|"Rust source findings"| wf
@@ -87,7 +90,7 @@ The router never scores the raw configured catalog. Unavailable models are not s
 
 ## EngineeringWorkflow
 
-Concrete bindb-first sequence: `Knowledge::plan` / `doctrine` → read **only** inspection-set paths via `Runtime` → plan JSON via `AiClient` → file edits via `AiClient` → write allowed paths → `cargo fmt` / `cargo test` → `git_diff` → `Knowledge::reindex` on success. Tests use `MemoryRuntime`, `MemoryKnowledge`, and `MockAiClient`. Search is not used.
+Concrete bindb-first sequence: `intel::plan` / doctrine → if `fallback_required` then explicit `Runtime::search`, else read **only** inspection-set paths → plan JSON via `AiClient` → file edits via `AiClient` → write allowed paths → `cargo fmt` / `cargo test` → `git_diff` → `Knowledge::reindex` on success. Tests use `MemoryRuntime`, `MemoryKnowledge`, and `MockAiClient`. Search is not used when the plan is `resolved`.
 
 ## IssueImplementationWorkflow
 
@@ -96,6 +99,10 @@ Concrete sequence, not a framework: search and read via `Runtime` **or** read a 
 ## HygieneWorkflow
 
 Apply path only. Findings and `OperationalContext` come from the scanner / dashboard / skill. bindb `Knowledge::plan` runs only for AI findings and returns location-independent semantic targets (`repo:path`). `HygieneWorkflow` resolves those into the execution workspace (`WorkspaceLayout`, `hygiene_apply --workspace` / `--bind`) before binder-llm. Unresolved targets fail as `workspace_resolution` with no mutation and no re-index. Deterministic fmt/clippy/badge/branch-delete skip the LLM. Branch delete uses the same PR-head / dirty-checkout guards as dashboard hygiene. README badge reads the live file. After validation: `reindex` of the **execution** checkouts + `record_execution`. Production knowledge: `CodeintelKnowledge`. Tests: `MemoryKnowledge`. `Runtime::search` is not used. Dashboard `HygieneEngine::process_findings` and Python `run_hygiene` are unchanged. The Cursor skill apply adapter is `src/bin/hygiene_apply.rs` plus `SkillApplyDocument` JSON. Live Ollama uses `OLLAMA_HOST`.
+
+## Engineering intelligence (`binder-ai-plan` / `POST /plan`)
+
+`binder-ai-plan` (one-shot) and `binder-ai-serve` (`POST /plan`) answer planning requests from IDEs. They query `Knowledge::plan`, classify `planning_result` / `fallback_required`, optionally resolve `repo:path` into the provided `workspace`, and return JSON. They do not call a model, write files, or re-index. Clients open only `resolved_execution_paths` when the plan is resolved. Repository discovery is allowed only when `fallback_required` is true. The CLI omits store-wide `doctrine` so IDE prompts stay small. `EngineeringWorkflow` uses this same `plan` and searches only after an explicit fallback.
 
 ## HygieneEngine
 

@@ -80,58 +80,93 @@ pub fn resolve_inspection_set(
     layout: &WorkspaceLayout,
     semantic: &[PathBuf],
 ) -> Result<InspectionResolution, WorkspaceResolveError> {
+    let attempt = resolve_inspection_set_best_effort(layout, semantic);
+    if let Some(err) = attempt.unresolved.into_iter().next() {
+        return Err(err);
+    }
+    Ok(attempt.resolution)
+}
+
+/// Resolve every target. Missing checkouts stay in `unresolved` (planning / IDE).
+pub fn resolve_inspection_set_best_effort(
+    layout: &WorkspaceLayout,
+    semantic: &[PathBuf],
+) -> InspectionAttempt {
     let mut resolved = Vec::new();
     let mut binds: BTreeMap<String, PathBuf> = BTreeMap::new();
+    let mut unresolved = Vec::new();
     for path in semantic {
-        let target = parse_semantic(path)?;
-        match target.repository {
-            None => {
-                resolved.push(ResolvedTarget {
-                    semantic: semantic_string(path),
-                    repository: String::new(),
-                    execution_path: target.relative,
-                });
-            }
-            Some(repo) => {
-                let checkout = layout
-                    .checkout(&repo)
-                    .ok_or_else(|| WorkspaceResolveError {
-                        unresolved: semantic_string(path),
-                        expected_repository: repo.clone(),
-                        message: "no checkout for repository in the execution workspace".into(),
-                    })?;
-                if let Some(root) = layout.root() {
-                    if !checkout_inside_root(&checkout, root) {
-                        return Err(WorkspaceResolveError {
-                            unresolved: semantic_string(path),
-                            expected_repository: repo,
-                            message: "checkout is not inside the execution workspace".into(),
-                        });
+        match resolve_one(layout, path) {
+            Ok(row) => {
+                if !row.repository.is_empty() {
+                    if let Some(checkout) = layout.checkout(&row.repository) {
+                        binds.insert(row.repository.clone(), checkout);
                     }
                 }
-                let file = checkout.join(&target.relative);
-                if !file.is_file() {
+                resolved.push(row);
+            }
+            Err(err) => unresolved.push(err),
+        }
+    }
+    InspectionAttempt {
+        resolution: InspectionResolution {
+            semantic: semantic.to_vec(),
+            resolved,
+            binds: binds.into_iter().collect(),
+        },
+        unresolved,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InspectionAttempt {
+    pub resolution: InspectionResolution,
+    pub unresolved: Vec<WorkspaceResolveError>,
+}
+
+fn resolve_one(
+    layout: &WorkspaceLayout,
+    path: &Path,
+) -> Result<ResolvedTarget, WorkspaceResolveError> {
+    let target = parse_semantic(path)?;
+    match target.repository {
+        None => Ok(ResolvedTarget {
+            semantic: semantic_string(path),
+            repository: String::new(),
+            execution_path: target.relative,
+        }),
+        Some(repo) => {
+            let checkout = layout
+                .checkout(&repo)
+                .ok_or_else(|| WorkspaceResolveError {
+                    unresolved: semantic_string(path),
+                    expected_repository: repo.clone(),
+                    message: "no checkout for repository in the execution workspace".into(),
+                })?;
+            if let Some(root) = layout.root() {
+                if !checkout_inside_root(&checkout, root) {
                     return Err(WorkspaceResolveError {
                         unresolved: semantic_string(path),
                         expected_repository: repo,
-                        message: format!("file not found at {}", file.display()),
+                        message: "checkout is not inside the execution workspace".into(),
                     });
                 }
-                let execution_path = PathBuf::from(&repo).join(&target.relative);
-                binds.insert(repo.clone(), checkout);
-                resolved.push(ResolvedTarget {
-                    semantic: semantic_string(path),
-                    repository: repo,
-                    execution_path,
+            }
+            let file = checkout.join(&target.relative);
+            if !file.is_file() {
+                return Err(WorkspaceResolveError {
+                    unresolved: semantic_string(path),
+                    expected_repository: repo,
+                    message: format!("file not found at {}", file.display()),
                 });
             }
+            Ok(ResolvedTarget {
+                semantic: semantic_string(path),
+                repository: repo.clone(),
+                execution_path: PathBuf::from(&repo).join(&target.relative),
+            })
         }
     }
-    Ok(InspectionResolution {
-        semantic: semantic.to_vec(),
-        resolved,
-        binds: binds.into_iter().collect(),
-    })
 }
 
 struct ParsedTarget {
@@ -308,5 +343,27 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.expected_repository, "binder-server");
         assert!(err.message.contains("inside the execution workspace"));
+    }
+
+    #[test]
+    fn best_effort_keeps_resolved_when_one_target_is_missing() {
+        let root = tempfile::tempdir().unwrap();
+        let server = root.path().join("binder-server");
+        fs::create_dir_all(&server).unwrap();
+        fs::write(server.join("Dockerfile"), "FROM rust\n").unwrap();
+        let layout = WorkspaceLayout::new(root.path());
+        let attempt = resolve_inspection_set_best_effort(
+            &layout,
+            &[
+                PathBuf::from("binder-server:Dockerfile"),
+                PathBuf::from("missing-repo:Cargo.toml"),
+            ],
+        );
+        assert_eq!(
+            attempt.resolution.execution_paths(),
+            vec![PathBuf::from("binder-server/Dockerfile")]
+        );
+        assert_eq!(attempt.unresolved.len(), 1);
+        assert_eq!(attempt.unresolved[0].expected_repository, "missing-repo");
     }
 }

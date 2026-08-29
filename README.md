@@ -21,8 +21,10 @@ Architectural context comes from bindb (`Knowledge`) before any LLM call. See [d
 - `HygieneEngine` for optional Rust source remediation from deterministic repository findings (inspection stays outside this crate). Dashboard AI still uses `IssueImplementationWorkflow` search.
 - `HygieneWorkflow` for bindb-first Hygiene: query `Knowledge`, skip binder-llm when dispatch is deterministic, validate, re-index, record execution history
 - `EngineeringWorkflow` for bindb-first engineering: query `Knowledge`, open only the inspection set, invoke binder-llm, validate, re-index
+- `binder-ai-plan` — one-shot inspect set for Cursor (stdout JSON, no HTTP, no model, no writes)
+- `binder-ai-serve` (`--features intel`) — `POST /plan` engineering context for IDEs. No model, no writes.
 
-HTTP, provider SDKs, authentication, and request mapping stay in `binder-llm`.
+HTTP for **providers** stays in `binder-llm`. Engineering intelligence is `binder-ai-plan` (CLI) and `binder-ai-serve` (HTTP). Cursor in `dpk-workspace` must call `scripts/binder-plan` before searching the tree.
 
 ## Usage
 

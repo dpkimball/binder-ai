@@ -8,9 +8,9 @@ Opinionated AI orchestration for Binder. Applications talk to [`AiClient`] for m
 
 Do **not** add HTTP clients, provider SDKs, auth, or provider JSON mapping. Those belong in `binder-llm`.
 
-Do **not** walk the repository to discover architecture when bindb can answer. Query [`Knowledge`] first.
+Do **not** walk the repository to discover architecture when bindb can answer. Query [`Knowledge`] first via [`plan`]. Repository search is allowed only when that plan sets `fallback_required`.
 
-Do **not** add REST APIs. This is a library. The `hygiene_apply` binary is the Cursor skill / dashboard adapter (JSON in, HygieneWorkflow out), not a hosted HTTP service. Live Ollama uses `OLLAMA_HOST` (QA Argo `ollama-service` or dev `dev-proxies-ollama`).
+The `binder-ai-plan` binary is the one-shot Cursor client: bindb inspect set on stdout, no HTTP, no model. `binder-ai-serve` (`--features intel`) is the HTTP adapter (`POST /plan`). Neither calls a model or modifies repositories. IDEs must not talk to bindb’s store. Cursor agents in the parent workspace must run `scripts/binder-plan` before Grep/Glob. `hygiene_apply` remains the Cursor skill / dashboard apply adapter. Live Ollama uses `OLLAMA_HOST` (QA Argo `ollama-service` or dev `dev-proxies-ollama`).
 
 Do **not** create a `binder-runtime` crate. Keep `Runtime` here until multiple applications need it independently.
 
@@ -23,6 +23,7 @@ src/
   routing/, policy.rs, router.rs
   prompt/, context/, conversation.rs, session.rs
   tools/, telemetry/, cache/, providers/, planners/
+  intel/                             # bindb planning for IDEs (binder-ai-plan / POST /plan)
   runtime/                           # LocalRuntime + MemoryRuntime
   knowledge/                         # bindb facts (Knowledge, MemoryKnowledge, CodeintelKnowledge)
   workspace/                         # semantic repo:path → execution checkout

@@ -19,9 +19,20 @@ anthropic = ["binder-llm/anthropic"]
 xai = ["binder-llm/xai"]
 gemini = ["binder-llm/gemini"]
 all-providers = ["ollama", "openai", "anthropic", "xai", "gemini"]
+intel = ["dep:axum"]
+
+[[bin]]
+name = "binder-ai-plan"
+path = "src/bin/binder_ai_plan.rs"
+
+[[bin]]
+name = "binder-ai-serve"
+path = "src/bin/binder_ai_serve.rs"
+required-features = ["intel"]
 
 [dependencies]
 async-trait = "0.1"
+axum = { version = "0.7", optional = true }
 binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }

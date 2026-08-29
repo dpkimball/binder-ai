@@ -27,18 +27,20 @@ bindb does **not** perform reasoning, generate code, or run workflows.
 
 ## binder-ai — orchestration
 
-binder-ai owns autonomous execution:
+binder-ai owns autonomous execution **and** engineering intelligence for tools:
 
 1. Receive the engineering request
 2. Query bindb (via a `Knowledge` surface)
 3. Collect semantic context and the inspection set
-4. Determine the execution plan
-5. Decide whether judgment is required
-6. Invoke binder-llm **only** with that curated context
-7. Execute implementation through `Runtime` (files, fmt, test, git)
-8. Validate
-9. Re-index bindb after a successful validation
-10. Produce the execution report
+4. Resolve those targets into the caller’s workspace when asked
+5. Return that context to an IDE (`binder-ai-plan` / `POST /plan`) **or** continue into apply workflows. Repository discovery is allowed only when `fallback_required` is true.
+6. Determine the execution plan (apply path only)
+7. Decide whether judgment is required
+8. Invoke binder-llm **only** with that curated context (never on `binder-ai-plan` / `POST /plan`)
+9. Execute implementation through `Runtime` (files, fmt, test, git)
+10. Validate
+11. Re-index bindb after a successful validation
+12. Produce the execution report
 
 binder-ai does **not** implement LLM reasoning (no provider SDKs, no prompt-as-transport). It does **not** discover application structure by walking the repository when bindb can answer.
 
@@ -100,4 +102,4 @@ Use **binder-llm** when judgment is required: implement this, explain this desig
 
 ## Non-goals
 
-New parsers, rustc / rust-analyzer, IDE or Cursor product integration, hosted services, LLM planning improvements inside bindb.
+New parsers, rustc / rust-analyzer, Cursor extension, LLM planning improvements inside bindb. Additional intelligence endpoints beyond `POST /plan` are later milestones.
