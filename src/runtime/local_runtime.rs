@@ -1,5 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -16,12 +17,18 @@ use crate::runtime::search_result::SearchResult;
 #[derive(Debug, Clone)]
 pub struct LocalRuntime {
     root: PathBuf,
+    reads: Arc<Mutex<Vec<PathBuf>>>,
+    writes: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl LocalRuntime {
     pub fn new(root: impl AsRef<Path>) -> Result<Self> {
         let root = std::fs::canonicalize(root.as_ref()).map_err(RuntimeError::from)?;
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            reads: Arc::new(Mutex::new(Vec::new())),
+            writes: Arc::new(Mutex::new(Vec::new())),
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -53,8 +60,9 @@ impl LocalRuntime {
 #[async_trait]
 impl Runtime for LocalRuntime {
     async fn read_file(&self, path: &Path) -> Result<String> {
+        let requested = path.to_path_buf();
         let path = self.resolve(path)?;
-        tokio::fs::read_to_string(&path).await.map_err(|err| {
+        let text = tokio::fs::read_to_string(&path).await.map_err(|err| {
             if err.kind() == std::io::ErrorKind::NotFound {
                 RuntimeError::NotFound {
                     path: path.display().to_string(),
@@ -62,15 +70,25 @@ impl Runtime for LocalRuntime {
             } else {
                 RuntimeError::from(err)
             }
-        })
+        })?;
+        self.reads
+            .lock()
+            .expect("local runtime mutex")
+            .push(requested);
+        Ok(text)
     }
 
     async fn write_file(&self, path: &Path, contents: &str) -> Result<()> {
+        let requested = path.to_path_buf();
         let path = self.resolve(path)?;
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
         tokio::fs::write(&path, contents).await?;
+        self.writes
+            .lock()
+            .expect("local runtime mutex")
+            .push(requested);
         Ok(())
     }
 
@@ -138,6 +156,14 @@ impl Runtime for LocalRuntime {
         tokio::task::spawn_blocking(move || git_diff_blocking(&root))
             .await
             .map_err(|err| RuntimeError::git(err.to_string()))?
+    }
+
+    fn recorded_reads(&self) -> Vec<PathBuf> {
+        self.reads.lock().expect("local runtime mutex").clone()
+    }
+
+    fn recorded_writes(&self) -> Vec<PathBuf> {
+        self.writes.lock().expect("local runtime mutex").clone()
     }
 }
 
@@ -312,6 +338,7 @@ mod tests {
             .unwrap();
         let text = runtime.read_file(Path::new("src/lib.rs")).await.unwrap();
         assert_eq!(text, "fn ok() {}\n");
+        assert_eq!(runtime.recorded_reads(), vec![PathBuf::from("src/lib.rs")]);
         let err = runtime.read_file(Path::new("../secret")).await.unwrap_err();
         assert_eq!(err.kind(), "path_escape");
     }

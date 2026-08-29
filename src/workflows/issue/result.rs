@@ -35,6 +35,13 @@ pub enum WorkflowError {
 
     #[error("knowledge failed: {message}")]
     KnowledgeFailed { message: String },
+
+    #[error("workspace resolution failed: {unresolved} (expected repository {expected_repository}): {message}")]
+    WorkspaceResolution {
+        unresolved: String,
+        expected_repository: String,
+        message: String,
+    },
 }
 
 impl WorkflowError {
@@ -47,6 +54,7 @@ impl WorkflowError {
             Self::TestingFailed { .. } => "testing_failed",
             Self::GitFailed { .. } => "git_failed",
             Self::KnowledgeFailed { .. } => "knowledge_failed",
+            Self::WorkspaceResolution { .. } => "workspace_resolution",
         }
     }
 
@@ -100,6 +108,14 @@ impl WorkflowError {
 
     pub fn from_knowledge(err: crate::knowledge::KnowledgeError) -> Self {
         Self::KnowledgeFailed {
+            message: err.message,
+        }
+    }
+
+    pub fn from_workspace(err: crate::workspace::WorkspaceResolveError) -> Self {
+        Self::WorkspaceResolution {
+            unresolved: err.unresolved,
+            expected_repository: err.expected_repository,
             message: err.message,
         }
     }

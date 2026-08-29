@@ -27,6 +27,7 @@ mod task;
 mod telemetry;
 mod tools;
 mod workflows;
+mod workspace;
 
 pub use builder::AiClientBuilder;
 pub use cache::{AiCache, MemoryCache};
@@ -72,6 +73,10 @@ pub use workflows::{
     IssueImplementationResult, IssueImplementationWorkflow, OperationalContext, ProjectKind,
     RemediationType, Severity, SkillApplyDocument, SkillApplyReport, SkillFindingJson,
     SkillOperationalJson, SkillOutcomeJson, WorkflowError,
+};
+pub use workspace::{
+    resolve_inspection_set, InspectionResolution, ResolvedTarget, WorkspaceLayout,
+    WorkspaceResolveError,
 };
 
 /// Spec alias: callers describe a task, not a vendor.

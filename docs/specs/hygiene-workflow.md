@@ -5,6 +5,7 @@ github_issue: https://github.com/dpkimball/binder-ai/issues/16
 github_issue_e2e: https://github.com/dpkimball/binder-ai/issues/18
 github_issue_skill: https://github.com/dpkimball/binder-ai/issues/20
 github_issue_ollama: https://github.com/dpkimball/binder-ai/issues/22
+github_issue_workspace: https://github.com/dpkimball/binder-ai/issues/24
 ---
 
 # Hygiene apply from bindb
@@ -28,8 +29,11 @@ HygieneWorkflow
         │
         ├── bindb Knowledge::plan / doctrine
         │     only if a finding needs judgment
+        │     (semantic inspect set; location-independent)
         │
-        ├── binder-llm (inspection-set files only)
+        ├── workspace resolution (repo:path → execution files)
+        │
+        ├── binder-llm (resolved files only)
         │     skipped for deterministic apply
         │
         ├── Runtime execute / validate
@@ -50,7 +54,9 @@ The Cursor skill discovers operational findings, writes the JSON document in `Sk
 - README badge insertion reads the live file; it is not gated on the semantic graph.
 - Branch delete uses `OperationalContext` (default branch, current branch, dirty, open PR heads) with the same guards as dashboard/skill.
 - AI findings query bindb for the inspection set; empty set → `KnowledgeFailed`, 0 LLM calls.
-- After validation succeeds: re-index and record execution history.
+- Semantic `repo:path` inspect targets are resolved into the execution workspace **before** binder-llm. Unresolved targets are `workspace_resolution` (object + expected repository), not `knowledge_failed`. No mutation, no re-index.
+- Planning does not depend on checkout location. `hygiene_apply --workspace DIR` and repeatable `--bind name=PATH` map semantic names onto temp trees, clones, or alternate roots.
+- After validation succeeds: re-index the **execution** checkouts and record execution history.
 - Production `Knowledge` is `CodeintelKnowledge` (codeintel CLI → Architecture JSON). `MemoryKnowledge` is the test double.
 
 ## Non-goals

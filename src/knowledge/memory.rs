@@ -14,6 +14,7 @@ pub struct MemoryKnowledge {
     reindex_calls: AtomicU32,
     plan_calls: AtomicU32,
     history: Mutex<Vec<ExecutionRecord>>,
+    execution_binds: Mutex<Vec<(String, PathBuf)>>,
 }
 
 impl MemoryKnowledge {
@@ -24,6 +25,7 @@ impl MemoryKnowledge {
             reindex_calls: AtomicU32::new(0),
             plan_calls: AtomicU32::new(0),
             history: Mutex::new(Vec::new()),
+            execution_binds: Mutex::new(Vec::new()),
         }
     }
 
@@ -61,6 +63,13 @@ impl MemoryKnowledge {
     pub fn execution_history(&self) -> Vec<ExecutionRecord> {
         self.history.lock().expect("memory knowledge mutex").clone()
     }
+
+    pub fn execution_binds(&self) -> Vec<(String, PathBuf)> {
+        self.execution_binds
+            .lock()
+            .expect("memory knowledge mutex")
+            .clone()
+    }
 }
 
 impl Knowledge for MemoryKnowledge {
@@ -91,5 +100,13 @@ impl Knowledge for MemoryKnowledge {
 
     fn execution_history(&self) -> std::result::Result<Vec<ExecutionRecord>, KnowledgeError> {
         Ok(self.history.lock().expect("memory knowledge mutex").clone())
+    }
+
+    fn bind_execution_workspace(
+        &self,
+        binds: Vec<(String, PathBuf)>,
+    ) -> std::result::Result<(), KnowledgeError> {
+        *self.execution_binds.lock().expect("memory knowledge mutex") = binds;
+        Ok(())
     }
 }

@@ -15,6 +15,13 @@ pub trait Knowledge: Send + Sync {
     fn reindex(&self) -> std::result::Result<ReindexStats, KnowledgeError>;
     fn record_execution(&self, record: ExecutionRecord) -> std::result::Result<(), KnowledgeError>;
     fn execution_history(&self) -> std::result::Result<Vec<ExecutionRecord>, KnowledgeError>;
+    /// Point re-index at the execution checkouts, not the paths used when indexing.
+    fn bind_execution_workspace(
+        &self,
+        _binds: Vec<(String, PathBuf)>,
+    ) -> std::result::Result<(), KnowledgeError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -50,6 +57,13 @@ impl<K: Knowledge + ?Sized> Knowledge for std::sync::Arc<K> {
 
     fn execution_history(&self) -> std::result::Result<Vec<ExecutionRecord>, KnowledgeError> {
         (**self).execution_history()
+    }
+
+    fn bind_execution_workspace(
+        &self,
+        binds: Vec<(String, PathBuf)>,
+    ) -> std::result::Result<(), KnowledgeError> {
+        (**self).bind_execution_workspace(binds)
     }
 }
 

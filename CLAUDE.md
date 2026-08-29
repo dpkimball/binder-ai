@@ -25,6 +25,7 @@ src/
   tools/, telemetry/, cache/, providers/, planners/
   runtime/                           # LocalRuntime + MemoryRuntime
   knowledge/                         # bindb facts (Knowledge, MemoryKnowledge, CodeintelKnowledge)
+  workspace/                         # semantic repo:path → execution checkout
   workflows/issue/                   # IssueImplementationWorkflow (search unless inspection_set)
   workflows/engineering/             # bindb-first EngineeringWorkflow
   workflows/hygiene/                 # HygieneEngine (legacy search apply) + HygieneWorkflow (discovery in, apply out)

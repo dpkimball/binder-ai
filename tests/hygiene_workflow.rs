@@ -4,6 +4,7 @@ use std::sync::Arc;
 use binder_ai::{
     Command, CommandResult, Finding, FindingKind, GitDiff, HygieneConfig, HygieneWorkflow,
     HygieneWorkflowRequest, MemoryKnowledge, MemoryRuntime, MockAiClient, OperationalContext,
+    WorkspaceLayout,
 };
 
 fn cargo_fmt_runtime() -> MemoryRuntime {
@@ -319,6 +320,132 @@ async fn empty_inspection_set_refuses_ai_without_llm() {
     assert_eq!(runtime.search_calls(), 0);
     assert_eq!(knowledge.reindex_calls(), 0);
     assert!(knowledge.execution_history().is_empty());
+}
+
+#[tokio::test]
+async fn qualified_inspect_set_without_workspace_fails_before_llm() {
+    let runtime = Arc::new(cargo_fmt_runtime());
+    let knowledge = Arc::new(MemoryKnowledge::for_files(
+        "hygiene rust bug",
+        [PathBuf::from("binder-server:Dockerfile")],
+    ));
+    let mock = MockAiClient::json_turns_local(["{}", "{}"]);
+    let workflow = HygieneWorkflow::new(
+        runtime.clone(),
+        knowledge.clone(),
+        HygieneConfig::default(),
+        mock.client.clone(),
+    );
+    let err = workflow
+        .execute(HygieneWorkflowRequest {
+            request: "hygiene rust bug".into(),
+            findings: vec![rust_bug()],
+            operational: None,
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), "workspace_resolution");
+    assert!(err.to_string().contains("binder-server:Dockerfile"));
+    assert!(err.to_string().contains("binder-server"));
+    assert_eq!(mock.chat_calls(), 0);
+    assert_eq!(runtime.search_calls(), 0);
+    assert_eq!(runtime.read_calls(), 0);
+    assert_eq!(knowledge.plan_calls(), 1);
+    assert_eq!(knowledge.reindex_calls(), 0);
+    assert!(knowledge.execution_history().is_empty());
+    assert!(runtime.write_paths().is_empty());
+}
+
+#[tokio::test]
+async fn semantic_targets_resolve_into_temporary_workspace() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("binder-server")).unwrap();
+    std::fs::write(
+        root.path().join("binder-server").join("Dockerfile"),
+        "FROM rust\n",
+    )
+    .unwrap();
+
+    let runtime = Arc::new(
+        MemoryRuntime::new()
+            .with_file("binder-server/Dockerfile", "FROM rust\n")
+            .script(Command::new("cargo").arg("fmt"), CommandResult::success(""))
+            .script(
+                Command::new("cargo").arg("test"),
+                CommandResult::success("ok"),
+            )
+            .with_git_diff(GitDiff {
+                branch: "master".into(),
+                patch: "diff --git a/binder-server/Dockerfile b/binder-server/Dockerfile\n+WORKDIR /app\n".into(),
+            }),
+    );
+    let knowledge = Arc::new(MemoryKnowledge::for_files(
+        "how should a Python service ship a Rust binary",
+        [PathBuf::from("binder-server:Dockerfile")],
+    ));
+    let plan = serde_json::json!({
+        "files": ["binder-server/Dockerfile"],
+        "steps": ["use extra_args build context"],
+        "summary": "Ship via Docker extra_args"
+    })
+    .to_string();
+    let edits = serde_json::json!({
+        "edits": [{
+            "path": "binder-server/Dockerfile",
+            "contents": "FROM rust\nWORKDIR /app\n"
+        }],
+        "summary": "Updated Dockerfile"
+    })
+    .to_string();
+    let mock = MockAiClient::json_turns_local([plan, edits]);
+    let workflow = HygieneWorkflow::new(
+        runtime.clone(),
+        knowledge.clone(),
+        HygieneConfig::default(),
+        mock.client.clone(),
+    )
+    .with_workspace(WorkspaceLayout::new(root.path()));
+    let report = workflow
+        .execute(HygieneWorkflowRequest {
+            request: "how should a Python service ship a Rust binary".into(),
+            findings: vec![rust_bug()],
+            operational: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(knowledge.plan_calls(), 1);
+    assert_eq!(report.primary_source, "bindb");
+    assert!(!report.search_used);
+    assert_eq!(
+        report.inspection_set,
+        vec![PathBuf::from("binder-server:Dockerfile")]
+    );
+    assert_eq!(
+        report.resolved_execution_paths,
+        vec![PathBuf::from("binder-server/Dockerfile")]
+    );
+    assert_eq!(
+        runtime.read_paths(),
+        vec![PathBuf::from("binder-server/Dockerfile")]
+    );
+    assert_eq!(runtime.search_calls(), 0);
+    assert_eq!(mock.chat_calls(), 2);
+    assert!(report.llm_invoked);
+    assert!(report.success);
+    assert!(report.validation_passed);
+    assert!(report.history_recorded);
+    assert_eq!(knowledge.reindex_calls(), 1);
+    assert_eq!(knowledge.execution_binds()[0].0, "binder-server");
+    assert_eq!(
+        knowledge.execution_binds()[0].1,
+        root.path().join("binder-server")
+    );
+    assert_eq!(
+        runtime.files()[Path::new("binder-server/Dockerfile")],
+        "FROM rust\nWORKDIR /app\n"
+    );
 }
 
 #[test]
