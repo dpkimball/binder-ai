@@ -10,6 +10,7 @@ mod config;
 mod context;
 mod conversation;
 mod error;
+mod intel;
 mod knowledge;
 mod mock;
 mod models;
@@ -38,6 +39,10 @@ pub use conversation::{
     Conversation, ConversationId, ConversationStore, InMemoryConversationStore,
 };
 pub use error::{AiError, Result};
+pub use intel::{
+    classify_planning, plan, AgentPlan, FallbackReason, IntelError, PlanRequest, PlanResponse,
+    PlanningDecision, PlanningMetrics, PlanningResult, UnresolvedTarget,
+};
 pub use knowledge::{
     CodeintelCli, CodeintelKnowledge, DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError,
     KnowledgePlan, MemoryKnowledge, ProcessCodeintelCli, ReindexStats,
@@ -75,8 +80,8 @@ pub use workflows::{
     SkillOperationalJson, SkillOutcomeJson, WorkflowError,
 };
 pub use workspace::{
-    resolve_inspection_set, InspectionResolution, ResolvedTarget, WorkspaceLayout,
-    WorkspaceResolveError,
+    resolve_inspection_set, resolve_inspection_set_best_effort, InspectionAttempt,
+    InspectionResolution, ResolvedTarget, WorkspaceLayout, WorkspaceResolveError,
 };
 
 /// Spec alias: callers describe a task, not a vendor.

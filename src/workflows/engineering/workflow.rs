@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::client::AiClient;
+use crate::intel::{plan as bindb_plan, PlanRequest};
 use crate::knowledge::Knowledge;
-use crate::runtime::Runtime;
+use crate::runtime::{Runtime, SearchKind, SearchRequest};
 use crate::workflows::engineering::request::EngineeringRequest;
 use crate::workflows::engineering::result::EngineeringReport;
 use crate::workflows::issue::implementer;
@@ -12,9 +13,11 @@ use crate::workflows::issue::planner;
 use crate::workflows::issue::validator;
 use crate::workflows::issue::{Issue, WorkflowError};
 
-/// Bindb-first loop: knowledge → curated LLM context → Runtime → re-index.
+const MAX_FILES: usize = 8;
+
+/// Bindb-first loop: knowledge plan → inspect set or explicit discovery fallback → LLM → Runtime.
 ///
-/// Does not search the repository. Inspection paths come from [`Knowledge`].
+/// Repository search runs only when the planner sets `fallback_required`.
 pub struct EngineeringWorkflow<R, K> {
     runtime: R,
     ai: AiClient,
@@ -41,30 +44,61 @@ impl<R: Runtime, K: Knowledge> EngineeringWorkflow<R, K> {
         })
         .await?;
 
-        let plan = phase("knowledge_plan", async {
-            self.knowledge
-                .plan(&request.request)
-                .map_err(WorkflowError::from_knowledge)
+        let mut plan = phase("knowledge_plan", async {
+            bindb_plan(
+                &self.knowledge,
+                &PlanRequest {
+                    workspace: Some(request.repository_root.clone()),
+                    request: request.request.clone(),
+                },
+            )
+            .map_err(|err| WorkflowError::KnowledgeFailed {
+                message: err.to_string(),
+            })
         })
         .await?;
-        if plan.primary_source != "bindb" {
-            return Err(WorkflowError::KnowledgeFailed {
-                message: "knowledge plan must declare primary_source bindb".into(),
-            });
-        }
-        if plan.inspection_set.is_empty() {
-            return Err(WorkflowError::KnowledgeFailed {
-                message: "empty inspection set; refusing to invoke reasoning without bindb context"
-                    .into(),
-            });
-        }
 
-        let allowed: BTreeSet<PathBuf> = plan.inspection_set.iter().map(normalize).collect();
-        let files = phase("inspect", async {
-            self.read_inspection_set(&plan.inspection_set).await
-        })
-        .await?;
+        let (files, search_performed) = if plan.fallback_required {
+            tracing::info!(
+                fallback_reason = ?plan.fallback_reason,
+                planning_result = ?plan.planning_result,
+                "engineering.repository_discovery"
+            );
+            (
+                phase("discover", async {
+                    self.search_and_read(&request.request).await
+                })
+                .await?,
+                true,
+            )
+        } else {
+            let paths = inspect_paths(&plan);
+            (
+                phase("inspect", async { self.read_inspection_set(&paths).await }).await?,
+                false,
+            )
+        };
+
+        let files_opened_from_inspection_set = if search_performed { 0 } else { files.len() };
+        plan = plan.with_acquisition(files_opened_from_inspection_set, search_performed);
+        tracing::info!(
+            planning_source = plan.planning_source,
+            planning_result = ?plan.planning_result,
+            fallback_required = plan.fallback_required,
+            fallback_reason = ?plan.fallback_reason,
+            inspection_set_size = plan.metrics.inspection_set_size,
+            files_opened_from_inspection_set,
+            repository_search_performed = search_performed,
+            "intel.planning.acquire"
+        );
+
+        let allowed: BTreeSet<PathBuf> = files.iter().map(|(p, _)| normalize(p)).collect();
         let files_opened: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
+        let inspection_set: Vec<PathBuf> = if search_performed {
+            files_opened.clone()
+        } else {
+            plan.inspection_set.iter().map(PathBuf::from).collect()
+        };
 
         let issue = Issue::new("engineering request", &request.request);
         let llm_plan = phase("reasoning_plan", async {
@@ -140,7 +174,7 @@ impl<R: Runtime, K: Knowledge> EngineeringWorkflow<R, K> {
 
         Ok(EngineeringReport {
             success,
-            inspection_set: plan.inspection_set,
+            inspection_set,
             files_opened,
             files_modified: modified,
             opened_outside_inspection_set: opened_outside,
@@ -152,6 +186,7 @@ impl<R: Runtime, K: Knowledge> EngineeringWorkflow<R, K> {
             git_diff,
             summary,
             primary_source: "bindb",
+            planning: plan.metrics,
         })
     }
 
@@ -179,6 +214,93 @@ impl<R: Runtime, K: Knowledge> EngineeringWorkflow<R, K> {
             });
         }
         Ok(files)
+    }
+
+    async fn search_and_read(
+        &self,
+        request: &str,
+    ) -> Result<Vec<(PathBuf, String)>, WorkflowError> {
+        let mut ordered: Vec<PathBuf> = Vec::new();
+        for term in discovery_terms(request) {
+            let content = SearchRequest {
+                query: term.clone(),
+                kind: SearchKind::Content,
+                glob: None,
+                extensions: vec!["rs".into()],
+                exclusions: vec!["target".into()],
+                max_results: Some(20),
+            };
+            push_hits(
+                &mut ordered,
+                self.runtime
+                    .search(content)
+                    .await
+                    .map_err(|err| WorkflowError::from_runtime_search(&err))?,
+            );
+            if ordered.len() >= MAX_FILES {
+                break;
+            }
+        }
+        ordered.truncate(MAX_FILES);
+
+        let mut files = Vec::new();
+        for path in ordered {
+            match self.runtime.read_file(&path).await {
+                Ok(contents) => files.push((path, contents)),
+                Err(err) => {
+                    tracing::info!(
+                        phase = "discover",
+                        path = %path.display(),
+                        error_kind = err.kind(),
+                        "engineering.read_skip"
+                    );
+                }
+            }
+        }
+        if files.is_empty() {
+            return Err(WorkflowError::SearchFailed {
+                message: "repository discovery found no files after planner fallback".into(),
+            });
+        }
+        Ok(files)
+    }
+}
+
+fn inspect_paths(plan: &crate::intel::PlanResponse) -> Vec<PathBuf> {
+    if !plan.resolved_execution_paths.is_empty() {
+        return plan
+            .resolved_execution_paths
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+    }
+    plan.inspection_set.iter().map(PathBuf::from).collect()
+}
+
+fn discovery_terms(request: &str) -> Vec<String> {
+    let mut terms = Vec::new();
+    let mut seen = BTreeSet::new();
+    for raw in request.split(|c: char| !c.is_alphanumeric()) {
+        let token = raw.trim();
+        if token.len() < 3 {
+            continue;
+        }
+        let key = token.to_lowercase();
+        if seen.insert(key) {
+            terms.push(token.to_string());
+        }
+    }
+    if terms.is_empty() {
+        terms.push(request.trim().to_string());
+    }
+    terms
+}
+
+fn push_hits(ordered: &mut Vec<PathBuf>, hits: Vec<crate::runtime::SearchResult>) {
+    for hit in hits {
+        if !ordered.iter().any(|p| p == &hit.path) {
+            ordered.push(hit.path);
+        }
     }
 }
 

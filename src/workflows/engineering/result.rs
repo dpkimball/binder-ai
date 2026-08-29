@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::intel::PlanningMetrics;
 use crate::knowledge::{DoctrineSnapshot, ReindexStats};
 use crate::runtime::{CommandResult, GitDiff};
 
@@ -19,4 +20,5 @@ pub struct EngineeringReport {
     pub git_diff: GitDiff,
     pub summary: String,
     pub primary_source: &'static str,
+    pub planning: PlanningMetrics,
 }
