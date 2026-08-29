@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart TD
-  apps["binder-server / binder-cloud / binder-desktop / binder-cli / Repository Hygiene / IDEs"]
+  apps["Foreman / binder-server / binder-cloud / binder-desktop / binder-cli / Repository Hygiene / IDEs"]
   intel["binder-ai-plan / POST /plan"]
   ai["binder-ai AiClient"]
   runtime["binder-ai Runtime"]
@@ -99,6 +99,12 @@ Concrete sequence, not a framework: search and read via `Runtime` **or** read a 
 ## HygieneWorkflow
 
 Apply path only. Findings and `OperationalContext` come from the scanner / dashboard / skill. bindb `Knowledge::plan` runs only for AI findings and returns location-independent semantic targets (`repo:path`). `HygieneWorkflow` resolves those into the execution workspace (`WorkspaceLayout`, `hygiene_apply --workspace` / `--bind`) before binder-llm. Unresolved targets fail as `workspace_resolution` with no mutation and no re-index. Deterministic fmt/clippy/badge/branch-delete skip the LLM. Branch delete uses the same PR-head / dirty-checkout guards as dashboard hygiene. README badge reads the live file. After validation: `reindex` of the **execution** checkouts + `record_execution`. Production knowledge: `CodeintelKnowledge`. Tests: `MemoryKnowledge`. `Runtime::search` is not used. Dashboard `HygieneEngine::process_findings` and Python `run_hygiene` are unchanged. The Cursor skill apply adapter is `src/bin/hygiene_apply.rs` plus `SkillApplyDocument` JSON. Live Ollama uses `OLLAMA_HOST`.
+
+`record_execution` appends `<store-path>.hygiene-history.jsonl` (sibling of the store directory via `Path::with_extension`). The store parent must be writable.
+
+## Foreman software runtime
+
+Foreman ExecutionOrchestrator invoke maps WorkItem kind `hygiene` → `hygiene_apply` and `documentation_review` → `documentation_review`. It does not embed `AiClient`. Checkout, git push, and PR create stay in Foreman. Operator topology: `foreman/docs/deployment/01-engineering-runtime-as-built.md`.
 
 ## Engineering intelligence (`binder-ai-plan` / `POST /plan`)
 
