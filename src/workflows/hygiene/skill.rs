@@ -53,6 +53,14 @@ pub struct SkillApplyReport {
     pub planning_ms: u64,
     pub reindex_ms: u64,
     pub inspection_set: Vec<String>,
+    pub resolved_execution_paths: Vec<String>,
+    pub files_opened: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_kind: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unresolved: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_repository: Option<String>,
     pub outcomes: Vec<SkillOutcomeJson>,
 }
 
@@ -130,6 +138,19 @@ impl SkillApplyReport {
                 .iter()
                 .map(|p| p.display().to_string())
                 .collect(),
+            resolved_execution_paths: report
+                .resolved_execution_paths
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect(),
+            files_opened: report
+                .files_opened
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect(),
+            error_kind: None,
+            unresolved: None,
+            expected_repository: None,
             outcomes: report
                 .hygiene
                 .outcomes
@@ -144,12 +165,57 @@ impl SkillApplyReport {
                 .collect(),
         }
     }
+
+    pub fn from_workspace(
+        err: &crate::workflows::issue::WorkflowError,
+        request: &HygieneWorkflowRequest,
+    ) -> Option<Self> {
+        let crate::workflows::issue::WorkflowError::WorkspaceResolution {
+            unresolved,
+            expected_repository,
+            message,
+        } = err
+        else {
+            return None;
+        };
+        let summary = format!(
+            "workspace_resolution: {unresolved} (expected repository {expected_repository}): {message}"
+        );
+        Some(Self {
+            success: false,
+            llm_invoked: false,
+            validation_passed: false,
+            history_recorded: false,
+            search_used: false,
+            primary_source: "bindb",
+            planning_ms: 0,
+            reindex_ms: 0,
+            inspection_set: Vec::new(),
+            resolved_execution_paths: Vec::new(),
+            files_opened: Vec::new(),
+            error_kind: Some("workspace_resolution"),
+            unresolved: Some(unresolved.clone()),
+            expected_repository: Some(expected_repository.clone()),
+            outcomes: request
+                .findings
+                .iter()
+                .map(|finding| SkillOutcomeJson {
+                    repository: finding.repository.clone(),
+                    finding: finding.kind.as_str().into(),
+                    remediation: "ai".into(),
+                    success: false,
+                    summary: summary.clone(),
+                })
+                .collect(),
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflows::hygiene::finding::FindingKind;
+    use crate::workflows::hygiene::finding::{Finding, FindingKind, ProjectKind};
+    use crate::workflows::hygiene::workflow::HygieneWorkflowRequest;
 
     #[test]
     fn parses_skill_shaped_discovery_json() {
@@ -219,5 +285,31 @@ mod tests {
             .into_request()
             .unwrap_err();
         assert!(err.contains("unknown finding kind"), "{err}");
+    }
+
+    #[test]
+    fn workspace_resolution_report_is_structured() {
+        let request = HygieneWorkflowRequest {
+            request: "hygiene rust bug".into(),
+            findings: vec![Finding::new("demo", FindingKind::RustBug, "bug")],
+            operational: None,
+        };
+        let err = crate::workflows::issue::WorkflowError::WorkspaceResolution {
+            unresolved: "binder-server:Dockerfile".into(),
+            expected_repository: "binder-server".into(),
+            message: "no checkout for repository in the execution workspace".into(),
+        };
+        let report = SkillApplyReport::from_workspace(&err, &request).unwrap();
+        assert!(!report.success);
+        assert_eq!(report.error_kind, Some("workspace_resolution"));
+        assert_eq!(
+            report.unresolved.as_deref(),
+            Some("binder-server:Dockerfile")
+        );
+        assert_eq!(report.expected_repository.as_deref(), Some("binder-server"));
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("workspace_resolution"));
+        assert!(!json.contains("knowledge_failed"));
+        assert_eq!(report.outcomes[0].finding, "rust_bug");
     }
 }

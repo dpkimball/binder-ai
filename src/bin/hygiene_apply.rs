@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use binder_ai::{
     dispatch, AiClient, CodeintelKnowledge, DispatchDecision, HygieneConfig, HygieneWorkflow,
     LocalRuntime, MockAiClient, ProcessCodeintelCli, RoutingPolicy, SkillApplyDocument,
-    SkillApplyReport,
+    SkillApplyReport, WorkflowError, WorkspaceLayout,
 };
 
 #[tokio::main]
@@ -28,7 +28,7 @@ async fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.iter().any(|a| a == "-h" || a == "--help") {
         eprintln!(
-            "hygiene_apply --repo DIR --store DIR --name NAME --input FILE [--codeintel BIN]"
+            "hygiene_apply --repo DIR --store DIR --name NAME --input FILE [--workspace DIR] [--bind name=PATH] [--codeintel BIN]"
         );
         return Ok(());
     }
@@ -38,6 +38,8 @@ async fn run() -> Result<(), String> {
     let input = required_flag(&args, "--input")?;
     let codeintel = flag(&args, "--codeintel")
         .unwrap_or_else(|| env::var("CODEINTEL_BIN").unwrap_or_else(|_| "codeintel".into()));
+    let workspace = flag(&args, "--workspace").unwrap_or_else(|| default_workspace(&repo));
+    let layout = execution_layout(&workspace, &name, &repo, &args)?;
 
     let raw = std::fs::read_to_string(&input).map_err(|err| format!("read {input}: {err}"))?;
     let request = SkillApplyDocument::parse(&raw)?.into_request()?;
@@ -53,7 +55,7 @@ async fn run() -> Result<(), String> {
         );
     }
 
-    let runtime = LocalRuntime::new(Path::new(&repo)).map_err(|err| err.to_string())?;
+    let runtime = LocalRuntime::new(Path::new(&workspace)).map_err(|err| err.to_string())?;
     let knowledge = CodeintelKnowledge::new(
         PathBuf::from(&store),
         vec![(name, PathBuf::from(&repo))],
@@ -65,16 +67,24 @@ async fn run() -> Result<(), String> {
         let ai = AiClient::builder()
             .routing_policy(RoutingPolicy::LocalOnly)
             .build();
-        HygieneWorkflow::new(runtime, knowledge, config, ai)
-            .execute(request)
+        match HygieneWorkflow::new(runtime, knowledge, config, ai)
+            .with_workspace(layout)
+            .execute(request.clone())
             .await
-            .map_err(|err| err.to_string())?
+        {
+            Ok(report) => report,
+            Err(err) => return emit_workflow_error(&request, err),
+        }
     } else {
         let mock = MockAiClient::json_turns_local(["{}", "{}"]);
-        let report = HygieneWorkflow::new(runtime, knowledge, config, mock.client.clone())
-            .execute(request)
+        let report = match HygieneWorkflow::new(runtime, knowledge, config, mock.client.clone())
+            .with_workspace(layout)
+            .execute(request.clone())
             .await
-            .map_err(|err| err.to_string())?;
+        {
+            Ok(report) => report,
+            Err(err) => return emit_workflow_error(&request, err),
+        };
         if mock.chat_calls() != 0 {
             return Err(format!(
                 "deterministic skill apply invoked binder-llm {} time(s)",
@@ -92,10 +102,62 @@ async fn run() -> Result<(), String> {
     Ok(())
 }
 
+fn emit_workflow_error(
+    request: &binder_ai::HygieneWorkflowRequest,
+    err: WorkflowError,
+) -> Result<(), String> {
+    if let Some(report) = SkillApplyReport::from_workspace(&err, request) {
+        let json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+        println!("{json}");
+        return Err(err.to_string());
+    }
+    Err(err.to_string())
+}
+
+fn execution_layout(
+    workspace: &str,
+    name: &str,
+    repo: &str,
+    args: &[String],
+) -> Result<WorkspaceLayout, String> {
+    let mut layout = WorkspaceLayout::new(workspace).bind(name, PathBuf::from(repo));
+    for spec in flags(args, "--bind") {
+        let (bind_name, path) = parse_bind(&spec)?;
+        layout = layout.bind(bind_name, path);
+    }
+    Ok(layout)
+}
+
+fn default_workspace(repo: &str) -> String {
+    Path::new(repo)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new(repo))
+        .display()
+        .to_string()
+}
+
+fn parse_bind(spec: &str) -> Result<(String, PathBuf), String> {
+    let (name, path) = spec
+        .split_once('=')
+        .ok_or_else(|| format!("--bind expects name=PATH, got `{spec}`"))?;
+    if name.is_empty() || path.is_empty() {
+        return Err(format!("--bind expects name=PATH, got `{spec}`"));
+    }
+    Ok((name.to_string(), PathBuf::from(path)))
+}
+
 fn flag(args: &[String], name: &str) -> Option<String> {
     args.windows(2)
         .find(|pair| pair[0] == name)
         .map(|pair| pair[1].clone())
+}
+
+fn flags(args: &[String], name: &str) -> Vec<String> {
+    args.windows(2)
+        .filter(|pair| pair[0] == name)
+        .map(|pair| pair[1].clone())
+        .collect()
 }
 
 fn required_flag(args: &[String], name: &str) -> Result<String, String> {

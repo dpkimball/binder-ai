@@ -9,9 +9,13 @@ codeintel index "$REPO" --store "$STORE" --name "$NAME"
 # QA in-cluster: OLLAMA_HOST=http://ollama-service.services.svc.cluster.local:11434
 cargo run --all-features --bin hygiene_apply -- \
   --repo "$REPO" --store "$STORE" --name "$NAME" \
+  --workspace "$WORKSPACE" \
+  --bind binder-server="$WORKSPACE/binder-server" \
   --codeintel "${CODEINTEL_BIN:-codeintel}" \
   --input apply.json
 ```
+
+`--workspace` defaults to the parent of `--repo` so sibling checkouts resolve as `{workspace}/{repo}/file`. Repeatable `--bind name=PATH` overrides the index-time location. Semantic inspect targets (`binder-server:Dockerfile`) stay location-independent; the binary refuses binder-llm with structured `workspace_resolution` when a target cannot be opened in the execution workspace.
 
 `apply.json` is `SkillApplyDocument`: `request`, `findings[]` (`kind`, `repository_root`, optional `target_ref` / `github_slug` / `project`), `operational` (default/current branch, dirty, open PR heads).
 

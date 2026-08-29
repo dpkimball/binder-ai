@@ -12,6 +12,7 @@ use crate::workflows::hygiene::operational::OperationalContext;
 use crate::workflows::hygiene::remediation::{DispatchDecision, RemediationType};
 use crate::workflows::hygiene::result::HygieneReport;
 use crate::workflows::issue::WorkflowError;
+use crate::workspace::{resolve_inspection_set, WorkspaceLayout};
 
 /// Hygiene apply request. Findings come from live discovery, not from bindb.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -41,6 +42,7 @@ pub struct HygieneWorkflowReport {
     pub search_used: bool,
     /// `discovery` when only operational findings ran; `bindb` when semantic plan was used.
     pub primary_source: &'static str,
+    pub resolved_execution_paths: Vec<PathBuf>,
 }
 
 /// Apply path for Hygiene. Discovery stays on the scanner / dashboard / skill.
@@ -51,6 +53,7 @@ pub struct HygieneWorkflow<R, K> {
     runtime: R,
     knowledge: K,
     engine: HygieneEngine,
+    layout: WorkspaceLayout,
 }
 
 impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
@@ -59,7 +62,13 @@ impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
             runtime,
             knowledge,
             engine: HygieneEngine::new(config, ai),
+            layout: WorkspaceLayout::passthrough(),
         }
+    }
+
+    pub fn with_workspace(mut self, layout: WorkspaceLayout) -> Self {
+        self.layout = layout;
+        self
     }
 
     pub async fn execute(
@@ -118,6 +127,18 @@ impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
             )
         };
 
+        let (engine_paths, resolved_execution_paths) = if semantic {
+            let resolution = resolve_inspection_set(&self.layout, &plan.inspection_set)
+                .map_err(WorkflowError::from_workspace)?;
+            self.knowledge
+                .bind_execution_workspace(resolution.binds.clone())
+                .map_err(WorkflowError::from_knowledge)?;
+            let paths = resolution.execution_paths();
+            (paths.clone(), paths)
+        } else {
+            (plan.inspection_set.clone(), Vec::new())
+        };
+
         let mut hygiene = HygieneReport::default();
         for finding in &request.findings {
             let outcome = self
@@ -125,7 +146,7 @@ impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
                 .process_one_apply(
                     self.runtime.clone(),
                     finding,
-                    &plan.inspection_set,
+                    &engine_paths,
                     request.operational.as_ref(),
                 )
                 .await;
@@ -206,6 +227,7 @@ impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
             history_recorded,
             search_used: false,
             primary_source: if semantic { "bindb" } else { "discovery" },
+            resolved_execution_paths,
         })
     }
 }

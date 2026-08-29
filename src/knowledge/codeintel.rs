@@ -51,7 +51,7 @@ impl CodeintelCli for ProcessCodeintelCli {
 /// to the store.
 pub struct CodeintelKnowledge<C> {
     store: PathBuf,
-    binds: Vec<(String, PathBuf)>,
+    binds: Mutex<Vec<(String, PathBuf)>>,
     cli: C,
     history: Mutex<Vec<ExecutionRecord>>,
 }
@@ -66,7 +66,7 @@ impl<C: CodeintelCli> CodeintelKnowledge<C> {
     pub fn new(store: impl Into<PathBuf>, binds: Vec<(String, PathBuf)>, cli: C) -> Self {
         Self {
             store: store.into(),
-            binds,
+            binds: Mutex::new(binds),
             cli,
             history: Mutex::new(Vec::new()),
         }
@@ -107,8 +107,13 @@ impl<C: CodeintelCli> Knowledge for CodeintelKnowledge<C> {
 
     fn reindex(&self) -> std::result::Result<ReindexStats, KnowledgeError> {
         let store = self.store.display().to_string();
+        let binds = self
+            .binds
+            .lock()
+            .expect("codeintel knowledge mutex")
+            .clone();
         let mut repositories = Vec::new();
-        for (name, path) in &self.binds {
+        for (name, path) in &binds {
             self.cli.run(&[
                 "index".into(),
                 path.display().to_string(),
@@ -121,7 +126,7 @@ impl<C: CodeintelCli> Knowledge for CodeintelKnowledge<C> {
         }
         Ok(ReindexStats {
             repositories,
-            skipped: self.binds.is_empty(),
+            skipped: binds.is_empty(),
         })
     }
 
@@ -136,6 +141,14 @@ impl<C: CodeintelCli> Knowledge for CodeintelKnowledge<C> {
 
     fn execution_history(&self) -> std::result::Result<Vec<ExecutionRecord>, KnowledgeError> {
         Ok(self.execution_history_local())
+    }
+
+    fn bind_execution_workspace(
+        &self,
+        binds: Vec<(String, PathBuf)>,
+    ) -> std::result::Result<(), KnowledgeError> {
+        *self.binds.lock().expect("codeintel knowledge mutex") = binds;
+        Ok(())
     }
 }
 
@@ -277,5 +290,52 @@ mod tests {
         assert_eq!(snap.findings, 0);
         assert_eq!(snap.rules_evaluated, 1);
         assert_eq!(snap.repository, "demo");
+    }
+
+    #[test]
+    fn reindex_uses_execution_workspace_binds() {
+        let calls = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let knowledge = CodeintelKnowledge::new(
+            PathBuf::from("/tmp/store"),
+            vec![("indexed".into(), PathBuf::from("/indexed"))],
+            RecordingCli {
+                calls: calls.clone(),
+            },
+        );
+        knowledge
+            .bind_execution_workspace(vec![(
+                "binder-server".into(),
+                PathBuf::from("/tmp/hygiene-work/binder-server"),
+            )])
+            .unwrap();
+        let stats = knowledge.reindex().unwrap();
+        assert_eq!(stats.repositories, vec!["binder-server"]);
+        let recorded = calls.lock().expect("recording cli mutex");
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(
+            recorded[0],
+            vec![
+                "index",
+                "/tmp/hygiene-work/binder-server",
+                "--store",
+                "/tmp/store",
+                "--name",
+                "binder-server",
+            ]
+        );
+    }
+
+    struct RecordingCli {
+        calls: std::sync::Arc<Mutex<Vec<Vec<String>>>>,
+    }
+
+    impl CodeintelCli for RecordingCli {
+        fn run(&self, args: &[String]) -> std::result::Result<String, KnowledgeError> {
+            self.calls
+                .lock()
+                .expect("recording cli mutex")
+                .push(args.to_vec());
+            Ok("{}".into())
+        }
     }
 }
