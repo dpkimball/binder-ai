@@ -71,13 +71,14 @@ pub use task::{Task, TaskKind};
 pub use telemetry::{estimate_cost, estimate_cost_for, AiMetrics, CostEstimate};
 pub use tools::{MockToolExecutor, ToolExecutor, ToolKind, ToolRegistry, UnboundToolExecutor};
 pub use workflows::{
-    dispatch, AutoRemediation, DeterministicAction, DispatchDecision, EngineeringReport,
-    EngineeringRequest, EngineeringWorkflow, FileEdit, Finding, FindingKind, FindingOutcome,
-    HygieneConfig, HygieneEngine, HygieneReport, HygieneWorkflow, HygieneWorkflowReport,
-    HygieneWorkflowRequest, ImplementationPlan, Issue, IssueImplementationRequest,
-    IssueImplementationResult, IssueImplementationWorkflow, OperationalContext, ProjectKind,
-    RemediationType, Severity, SkillApplyDocument, SkillApplyReport, SkillFindingJson,
-    SkillOperationalJson, SkillOutcomeJson, WorkflowError,
+    dispatch, AutoRemediation, DeterministicAction, DispatchDecision, DocumentationGap,
+    DocumentationReviewReport, DocumentationReviewRequest, DocumentationReviewWorkflow,
+    EngineeringReport, EngineeringRequest, EngineeringWorkflow, FileEdit, Finding, FindingKind,
+    FindingOutcome, HygieneConfig, HygieneEngine, HygieneReport, HygieneWorkflow,
+    HygieneWorkflowReport, HygieneWorkflowRequest, ImplementationPlan, Issue,
+    IssueImplementationRequest, IssueImplementationResult, IssueImplementationWorkflow,
+    OperationalContext, ProjectKind, RemediationType, Severity, SkillApplyDocument,
+    SkillApplyReport, SkillFindingJson, SkillOperationalJson, SkillOutcomeJson, WorkflowError,
 };
 pub use workspace::{
     resolve_inspection_set, resolve_inspection_set_best_effort, InspectionAttempt,

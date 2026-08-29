@@ -1,9 +1,14 @@
 //! Concrete Binder workflows. Not a generic engine.
 
+pub mod documentation;
 pub mod engineering;
 pub mod hygiene;
 pub mod issue;
 
+pub use documentation::{
+    DocumentationGap, DocumentationReviewReport, DocumentationReviewRequest,
+    DocumentationReviewWorkflow,
+};
 pub use engineering::{EngineeringReport, EngineeringRequest, EngineeringWorkflow};
 
 pub use hygiene::{
