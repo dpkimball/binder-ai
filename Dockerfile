@@ -47,7 +47,7 @@ RUN strip /out/bin/binder-ai-serve || true
 
 FROM debian:bookworm-slim
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates git \
+  && apt-get install -y --no-install-recommends ca-certificates curl git \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --system --uid 65532 --create-home --home-dir /nonexistent --shell /usr/sbin/nologin serve \
   && mkdir -p /data \

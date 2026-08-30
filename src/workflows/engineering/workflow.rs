@@ -50,6 +50,7 @@ impl<R: Runtime, K: Knowledge> EngineeringWorkflow<R, K> {
                 &PlanRequest {
                     workspace: Some(request.repository_root.clone()),
                     request: request.request.clone(),
+                    since_sha: None,
                 },
             )
             .map_err(|err| WorkflowError::KnowledgeFailed {

@@ -11,6 +11,15 @@ use std::path::PathBuf;
 /// Bindb-backed architectural facts. Implementations must not call an LLM.
 pub trait Knowledge: Send + Sync {
     fn plan(&self, request: &str) -> std::result::Result<KnowledgePlan, KnowledgeError>;
+    /// Like `plan`, but compares against `since_sha` to populate `recent_changes`.
+    /// Default falls back to `plan` (no drift data). Override in production impls.
+    fn plan_since(
+        &self,
+        request: &str,
+        _since_sha: &str,
+    ) -> std::result::Result<KnowledgePlan, KnowledgeError> {
+        self.plan(request)
+    }
     fn doctrine(&self) -> std::result::Result<DoctrineSnapshot, KnowledgeError>;
     fn reindex(&self) -> std::result::Result<ReindexStats, KnowledgeError>;
     fn record_execution(&self, record: ExecutionRecord) -> std::result::Result<(), KnowledgeError>;
@@ -43,6 +52,14 @@ impl<K: Knowledge + ?Sized> Knowledge for std::sync::Arc<K> {
         (**self).plan(request)
     }
 
+    fn plan_since(
+        &self,
+        request: &str,
+        since_sha: &str,
+    ) -> std::result::Result<KnowledgePlan, KnowledgeError> {
+        (**self).plan_since(request, since_sha)
+    }
+
     fn doctrine(&self) -> std::result::Result<DoctrineSnapshot, KnowledgeError> {
         (**self).doctrine()
     }
@@ -67,6 +84,26 @@ impl<K: Knowledge + ?Sized> Knowledge for std::sync::Arc<K> {
     }
 }
 
+/// One file from the inspection set that changed between `since_sha` and HEAD.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RecentChange {
+    pub path: String,
+    pub repo: String,
+    /// "added" or "removed"
+    pub change: String,
+}
+
+/// Linked issue with a body excerpt for LLM context.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LinkedIssueSummary {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    pub repo: String,
+    /// First 1 000 chars of the issue body.
+    pub body_excerpt: String,
+}
+
 /// Graph-derived inspection plan. Paths are payload strings from bindb, not file reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnowledgePlan {
@@ -77,6 +114,10 @@ pub struct KnowledgePlan {
     pub rules_must_remain_satisfied: Vec<String>,
     pub likely_affected: Vec<String>,
     pub primary_source: &'static str,
+    /// Populated only when `plan_since` is used. Empty otherwise.
+    pub recent_changes: Vec<RecentChange>,
+    /// Top-matched issues with body excerpts for LLM explain context.
+    pub linked_issues: Vec<LinkedIssueSummary>,
 }
 
 /// Doctrine evaluation as stored in bindb (finding counts, not source).

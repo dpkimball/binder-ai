@@ -16,6 +16,7 @@ fn plan_returns_bindb_context_without_opening_files() {
         &PlanRequest {
             workspace: None,
             request: "Where is OLLAMA_HOST configured?".into(),
+            since_sha: None,
         },
     )
     .unwrap();
@@ -70,6 +71,7 @@ fn plan_resolves_into_the_execution_workspace() {
         &PlanRequest {
             workspace: Some(root.path().to_path_buf()),
             request: "Where is OLLAMA_HOST configured?".into(),
+            since_sha: None,
         },
     )
     .unwrap();
@@ -93,6 +95,7 @@ fn empty_request_is_rejected() {
         &PlanRequest {
             workspace: None,
             request: "  ".into(),
+            since_sha: None,
         },
     )
     .unwrap_err();
@@ -124,6 +127,7 @@ fn empty_inspection_set_is_unresolved_fallback() {
         &PlanRequest {
             workspace: None,
             request: "unknown symbol".into(),
+            since_sha: None,
         },
     )
     .unwrap();
@@ -163,6 +167,7 @@ fn partial_workspace_resolution_recommends_discovery_without_requiring_it() {
         &PlanRequest {
             workspace: Some(root.path().to_path_buf()),
             request: "Where is OLLAMA_HOST configured?".into(),
+            since_sha: None,
         },
     )
     .unwrap();

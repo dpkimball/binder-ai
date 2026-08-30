@@ -3,7 +3,8 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use super::{
-    DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError, KnowledgePlan, ReindexStats,
+    DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError, KnowledgePlan,
+    LinkedIssueSummary, RecentChange, ReindexStats,
 };
 
 /// Invoke the `codeintel` CLI (JSON on stdout).
@@ -94,6 +95,25 @@ impl<C: CodeintelCli> Knowledge for CodeintelKnowledge<C> {
         plan_from_architecture_json(&stdout)
     }
 
+    fn plan_since(
+        &self,
+        request: &str,
+        since_sha: &str,
+    ) -> std::result::Result<KnowledgePlan, KnowledgeError> {
+        let store = self.store.display().to_string();
+        let stdout = self.cli.run(&[
+            "architecture".into(),
+            "--store".into(),
+            store,
+            "plan".into(),
+            "--request".into(),
+            request.into(),
+            "--since-sha".into(),
+            since_sha.into(),
+        ])?;
+        plan_from_architecture_json(&stdout)
+    }
+
     fn doctrine(&self) -> std::result::Result<DoctrineSnapshot, KnowledgeError> {
         let store = self.store.display().to_string();
         let stdout = self.cli.run(&[
@@ -167,6 +187,42 @@ pub fn plan_from_architecture_json(
         })
         .unwrap_or_default();
     let repositories = string_list(&value, "repositories");
+    let recent_changes = value
+        .get("recent_changes")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(RecentChange {
+                        path: v.get("path")?.as_str()?.to_string(),
+                        repo: v.get("repo")?.as_str()?.to_string(),
+                        change: v.get("change")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let linked_issues = value
+        .get("linked_issues")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(LinkedIssueSummary {
+                        number: v.get("number")?.as_u64()?,
+                        title: v.get("title")?.as_str()?.to_string(),
+                        url: v.get("url")?.as_str()?.to_string(),
+                        repo: v.get("repo")?.as_str()?.to_string(),
+                        body_excerpt: v
+                            .get("body_excerpt")
+                            .and_then(|b| b.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(KnowledgePlan {
         request: value
             .get("request")
@@ -183,6 +239,8 @@ pub fn plan_from_architecture_json(
         rules_must_remain_satisfied: string_list(&value, "rules_must_remain_satisfied"),
         likely_affected: string_list(&value, "likely_affected"),
         primary_source: "bindb",
+        recent_changes,
+        linked_issues,
     })
 }
 
@@ -271,6 +329,67 @@ mod tests {
         assert_eq!(plan.inspection_set, vec![PathBuf::from("src/lib.rs")]);
         assert_eq!(plan.primary_source, "bindb");
         assert_eq!(plan.repositories, vec!["demo"]);
+        assert!(plan.recent_changes.is_empty());
+    }
+
+    #[test]
+    fn plan_json_parses_recent_changes() {
+        let raw = r#"{
+            "request": "fix add",
+            "interpretation": "file match",
+            "repositories": ["demo"],
+            "smallest_file_set": ["src/lib.rs"],
+            "rules_must_remain_satisfied": [],
+            "likely_affected": [],
+            "recent_changes": [
+                {"path": "src/lib.rs", "repo": "demo", "change": "added"},
+                {"path": "src/main.rs", "repo": "demo", "change": "removed"}
+            ],
+            "primary_source": "bindb"
+        }"#;
+        let plan = plan_from_architecture_json(raw).unwrap();
+        assert_eq!(plan.recent_changes.len(), 2);
+        assert_eq!(plan.recent_changes[0].path, "src/lib.rs");
+        assert_eq!(plan.recent_changes[0].repo, "demo");
+        assert_eq!(plan.recent_changes[0].change, "added");
+        assert_eq!(plan.recent_changes[1].change, "removed");
+    }
+
+    #[test]
+    fn plan_json_treats_null_recent_changes_as_empty() {
+        let raw = r#"{
+            "request": "x",
+            "interpretation": "y",
+            "repositories": [],
+            "smallest_file_set": [],
+            "rules_must_remain_satisfied": [],
+            "likely_affected": [],
+            "recent_changes": null,
+            "primary_source": "bindb"
+        }"#;
+        let plan = plan_from_architecture_json(raw).unwrap();
+        assert!(plan.recent_changes.is_empty());
+    }
+
+    #[test]
+    fn plan_since_passes_since_sha_flag() {
+        let calls = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let knowledge = CodeintelKnowledge::new(
+            PathBuf::from("/tmp/store"),
+            vec![],
+            RecordingCli {
+                calls: calls.clone(),
+            },
+        );
+        knowledge.plan_since("fix add", "abc123def456").unwrap();
+        let recorded = calls.lock().expect("recording cli mutex");
+        assert_eq!(recorded.len(), 1);
+        assert!(
+            recorded[0].contains(&"--since-sha".to_string()),
+            "plan_since must pass --since-sha flag: {:?}",
+            recorded[0]
+        );
+        assert!(recorded[0].contains(&"abc123def456".to_string()));
     }
 
     #[test]

@@ -41,6 +41,8 @@ impl MemoryKnowledge {
                 rules_must_remain_satisfied: vec!["workspace.acyclic-crates".into()],
                 likely_affected: vec!["fixture".into()],
                 primary_source: "bindb",
+                recent_changes: Vec::new(),
+                linked_issues: Vec::new(),
             },
             DoctrineSnapshot {
                 repository: "fixture".into(),
