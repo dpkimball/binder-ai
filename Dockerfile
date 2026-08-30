@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1.6
-# Plan service: binder-ai-serve + codeintel CLI. Bindb store is mounted at /data.
-# Build from a workspace that has sibling bindb + codeintel (make b extra_args
-# or CI checkouts), matching Foreman's named BuildKit contexts.
+#
+# Plan service: binder-ai-serve + codeintel CLI. Store is mounted at /data.
+# codeintel/bindb come from named BuildKit contexts (siblings in CI / make b).
+# binder-llm comes from Kellnr (registry dpk), same as binder-server.
+# Index: CARGO_REGISTRIES_DPK_INDEX (env.sh locally; PRIVATE_CARGO_URL in CI).
+# Local docker: dpk.toml extra_args uses host.docker.internal (DEV Kellnr).
 
 ARG CARGO_REGISTRIES_DPK_INDEX
 

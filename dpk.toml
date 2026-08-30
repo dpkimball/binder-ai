@@ -4,6 +4,8 @@ language = "rust"
 
 [docker]
 image_name = "binder-ai-serve"
+# Docker cannot reach Mac localhost:31127. host.docker.internal is DEV Kellnr.
+# CI uses PRIVATE_CARGO_URL via configure-cargo-registry (same as binder-server).
 extra_args = "--build-arg CARGO_REGISTRIES_DPK_INDEX=sparse+http://host.docker.internal:31127/api/v1/crates/ --build-context bindb=../bindb --build-context codeintel=../codeintel"
 
 [skip]
