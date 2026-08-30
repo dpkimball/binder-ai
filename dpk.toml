@@ -2,6 +2,13 @@
 name = "binder-ai"
 language = "rust"
 
+[docker]
+image_name = "binder-ai-serve"
+extra_args = "--build-arg CARGO_REGISTRIES_DPK_INDEX=sparse+http://host.docker.internal:31127/api/v1/crates/ --build-context bindb=../bindb --build-context codeintel=../codeintel"
+
 [skip]
+# rust-library-ci `make b` has no bindb/codeintel BuildKit contexts.
+# Image is built by .github/workflows/image.yml on the QA runner.
+# Chart is dpk-infra Argo services-parent (not this repo's helm).
 image = true
 deploy = true

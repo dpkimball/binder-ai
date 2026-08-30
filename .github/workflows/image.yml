@@ -1,0 +1,64 @@
+name: Image
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch: {}
+
+concurrency:
+  group: binder-ai-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker:
+    runs-on: product-ci
+    timeout-minutes: 45
+    steps:
+      - name: Reset self-hosted workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "${GITHUB_WORKSPACE}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+      - uses: actions/checkout@v4
+        with:
+          path: binder-ai
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/codeintel
+          path: codeintel
+          token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/bindb
+          path: bindb
+          token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
+
+      - name: Build binder-ai-serve image
+        working-directory: binder-ai
+        env:
+          # QA Kellnr NodePort (product-ci runs on the QA box).
+          CARGO_REGISTRIES_DPK_INDEX: sparse+http://host.docker.internal:32492/api/v1/crates/
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA:0:7}"
+          export DOCKER_BUILDKIT=1
+          docker build \
+            --build-arg CARGO_REGISTRIES_DPK_INDEX="${CARGO_REGISTRIES_DPK_INDEX}" \
+            --build-context bindb=../bindb \
+            --build-context codeintel=../codeintel \
+            -t localhost:30500/binder-ai-serve:latest \
+            -t "localhost:30500/binder-ai-serve:sha-${SHA}" \
+            .
+
+      - name: Push to QA registry
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA:0:7}"
+          docker push localhost:30500/binder-ai-serve:latest
+          docker push "localhost:30500/binder-ai-serve:sha-${SHA}"
