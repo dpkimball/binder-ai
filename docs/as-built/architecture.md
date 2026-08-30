@@ -110,6 +110,17 @@ Foreman ExecutionOrchestrator invoke maps WorkItem kind `hygiene` → `hygiene_a
 
 `binder-ai-plan` (one-shot) and `binder-ai-serve` (`POST /plan`) answer planning requests from IDEs. They query `Knowledge::plan`, classify `planning_result` / `fallback_required`, optionally resolve `repo:path` into the provided `workspace`, and return JSON. They do not call a model, write files, or re-index. Clients open only `resolved_execution_paths` when the plan is resolved. Repository discovery is allowed only when `fallback_required` is true. The CLI omits store-wide `doctrine` so IDE prompts stay small. `EngineeringWorkflow` uses this same `plan` and searches only after an explicit fallback.
 
+### Two stores (binder-workspace#154)
+
+There are two independent bindb stores with different membership:
+
+| Store | Location | Population |
+|---|---|---|
+| **Laptop** | `$BINDER_AI_WORKSPACE/codeintel/store` | Full index set (42 repos): all git checkouts + `repo-dashboard` prefix tree + `codev` submodule. Populated by `index-bindb` CLI in `repo-dashboard`. |
+| **QA** | `/data` PVC on `binder-ai-serve` pod | Subset: 41 `dpkimball/` GitHub repos (shallow clone + index) + `repo-dashboard` prefix-indexed from `binder-workspace` umbrella clone. Seed generation controlled by `dpk-infra` chart `seed.generation`. |
+
+`scripts/binder-plan` without `BINDER_AI_PLAN_URL` uses the laptop store. With `BINDER_AI_PLAN_URL=http://192.168.86.47:31784` it queries the QA serve pod. The QA store uses `BINDER_AI_WORKSPACE=/data/workspace` so paths resolve as `<repo>/relative` without laptop SSD mounts. Laptop paths (`/Volumes/SSD/…`) are not valid on the pod.
+
 ## HygieneEngine
 
 Repository Hygiene inspects dashboards, branches, PRs, CI, cargo, and git **without** AI. It classifies typed `Finding`s, then `HygieneEngine` dispatches:
