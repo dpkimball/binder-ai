@@ -38,17 +38,25 @@ jobs:
           path: bindb
           token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
 
+      - name: Configure Cargo registry dpk
+        uses: dpkimball/dpk-ci/.github/actions/configure-cargo-registry@master
+        with:
+          cargo_url: ${{ secrets.PRIVATE_CARGO_URL }}
+
       - name: Build binder-ai-serve image
         working-directory: binder-ai
-        env:
-          # QA Kellnr NodePort (product-ci runs on the QA box).
-          CARGO_REGISTRIES_DPK_INDEX: sparse+http://host.docker.internal:32492/api/v1/crates/
         run: |
           set -euo pipefail
           SHA="${GITHUB_SHA:0:7}"
           export DOCKER_BUILDKIT=1
+          INDEX="${CARGO_REGISTRIES_DPK_INDEX:?}"
+          # Linux Docker has no host.docker.internal unless we add it.
+          # PRIVATE_CARGO_URL may be 127.0.0.1 (host) — rewrite for the build container.
+          INDEX="${INDEX//127.0.0.1/host.docker.internal}"
+          INDEX="${INDEX//localhost/host.docker.internal}"
           docker build \
-            --build-arg CARGO_REGISTRIES_DPK_INDEX="${CARGO_REGISTRIES_DPK_INDEX}" \
+            --add-host=host.docker.internal:host-gateway \
+            --build-arg CARGO_REGISTRIES_DPK_INDEX="${INDEX}" \
             --build-context bindb=../bindb \
             --build-context codeintel=../codeintel \
             -t localhost:30500/binder-ai-serve:latest \

@@ -19,8 +19,8 @@ COPY --from=bindb benches ./bindb/benches
 COPY --from=codeintel Cargo.toml Cargo.lock README.md ./codeintel/
 COPY --from=codeintel src ./codeintel/src
 WORKDIR /src/codeintel
-RUN cargo install --locked --path . --root /out \
-  && strip /out/bin/codeintel || true
+RUN cargo install --locked --path . --root /out
+RUN strip /out/bin/codeintel || true
 
 FROM rust:1-slim-bookworm AS serve-build
 ARG CARGO_REGISTRIES_DPK_INDEX
@@ -39,8 +39,8 @@ RUN apt-get update \
 COPY .cargo/config.toml /usr/local/cargo/config.toml
 COPY Cargo.toml Cargo.lock README.md ./
 COPY src ./src
-RUN cargo install --locked --path . --bin binder-ai-serve --root /out --features intel \
-  && strip /out/bin/binder-ai-serve || true
+RUN cargo install --locked --path . --bin binder-ai-serve --root /out --features intel
+RUN strip /out/bin/binder-ai-serve || true
 
 FROM debian:bookworm-slim
 RUN apt-get update \
