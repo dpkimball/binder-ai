@@ -19,6 +19,8 @@ jobs:
   docker:
     runs-on: product-ci
     timeout-minutes: 45
+    outputs:
+      short: ${{ steps.sha.outputs.short }}
     steps:
       - name: Reset self-hosted workspace
         shell: bash
@@ -84,3 +86,57 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           provenance: false
           sbom: false
+
+      - name: Export short SHA
+        id: sha
+        if: github.event_name != 'pull_request'
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+  update-helm-values:
+    needs: docker
+    runs-on: product-ci
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    env:
+      HELM_VALUES_PATH: charts/binder-ai-serve/values-qa.yaml
+      SERVICE_NAME: binder-ai-serve
+      TAG: sha-${{ needs.docker.outputs.short }}
+    steps:
+      - name: Checkout dpk-infra
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/dpk-infra
+          token: ${{ secrets.PAT_WORKFLOWGITACTION }}
+          path: infra
+
+      - name: Verify yq
+        run: |
+          yq --version || (
+            curl -sSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o yq &&
+            chmod +x yq && ./yq --version
+          )
+
+      - name: Bump image tag in Helm values
+        working-directory: infra
+        env:
+          VALUES: ${{ env.HELM_VALUES_PATH }}
+          TAG: ${{ env.TAG }}
+        run: |
+          set -euo pipefail
+          test -f "$VALUES"
+          YQ_CMD="yq"
+          if ! command -v yq >/dev/null 2>&1; then
+            YQ_CMD="../yq"
+          fi
+          $YQ_CMD -i '.image.tag = env(TAG)' "$VALUES"
+
+      - name: Commit & push
+        working-directory: infra
+        env:
+          SVC: ${{ env.SERVICE_NAME }}
+          TAG: ${{ env.TAG }}
+        run: |
+          git config user.name  "Keepsake Bot"
+          git config user.email "bot@keepsake.local"
+          git add "$HELM_VALUES_PATH"
+          git commit -m "ci(${SVC}): bump image to ${TAG}" || echo "No changes to commit"
+          git push
