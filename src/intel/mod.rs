@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::knowledge::{Knowledge, KnowledgeError, RecentChange};
+use crate::knowledge::{Knowledge, KnowledgeError, LinkedIssueSummary, RecentChange};
 use crate::workspace::{resolve_inspection_set_best_effort, WorkspaceLayout};
 
 /// IDE planning request. `workspace` is the execution root; bindb store is server-side.
@@ -74,6 +74,9 @@ pub struct PlanResponse {
     pub impact: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub recent_changes: Vec<RecentChange>,
+    /// Top-matched issues with body excerpts for LLM explain context. Not included in AgentPlan.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_issues: Vec<LinkedIssueSummary>,
     pub metrics: PlanningMetrics,
 }
 
@@ -186,6 +189,7 @@ pub fn plan<K: Knowledge>(
         doctrine: knowledge_plan.rules_must_remain_satisfied,
         impact: knowledge_plan.likely_affected,
         recent_changes: knowledge_plan.recent_changes,
+        linked_issues: knowledge_plan.linked_issues,
         metrics,
     })
 }

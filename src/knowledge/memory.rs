@@ -42,6 +42,7 @@ impl MemoryKnowledge {
                 likely_affected: vec!["fixture".into()],
                 primary_source: "bindb",
                 recent_changes: Vec::new(),
+                linked_issues: Vec::new(),
             },
             DoctrineSnapshot {
                 repository: "fixture".into(),

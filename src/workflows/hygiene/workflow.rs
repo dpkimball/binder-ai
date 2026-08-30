@@ -122,6 +122,7 @@ impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
                     likely_affected: Vec::new(),
                     primary_source: "bindb",
                     recent_changes: Vec::new(),
+                    linked_issues: Vec::new(),
                 },
                 0,
                 false,

@@ -3,8 +3,8 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use super::{
-    DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError, KnowledgePlan, RecentChange,
-    ReindexStats,
+    DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError, KnowledgePlan,
+    LinkedIssueSummary, RecentChange, ReindexStats,
 };
 
 /// Invoke the `codeintel` CLI (JSON on stdout).
@@ -202,6 +202,27 @@ pub fn plan_from_architecture_json(
                 .collect()
         })
         .unwrap_or_default();
+    let linked_issues = value
+        .get("linked_issues")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(LinkedIssueSummary {
+                        number: v.get("number")?.as_u64()?,
+                        title: v.get("title")?.as_str()?.to_string(),
+                        url: v.get("url")?.as_str()?.to_string(),
+                        repo: v.get("repo")?.as_str()?.to_string(),
+                        body_excerpt: v
+                            .get("body_excerpt")
+                            .and_then(|b| b.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(KnowledgePlan {
         request: value
             .get("request")
@@ -219,6 +240,7 @@ pub fn plan_from_architecture_json(
         likely_affected: string_list(&value, "likely_affected"),
         primary_source: "bindb",
         recent_changes,
+        linked_issues,
     })
 }
 

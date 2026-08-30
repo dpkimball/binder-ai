@@ -93,6 +93,17 @@ pub struct RecentChange {
     pub change: String,
 }
 
+/// Linked issue with a body excerpt for LLM context.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LinkedIssueSummary {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    pub repo: String,
+    /// First 1 000 chars of the issue body.
+    pub body_excerpt: String,
+}
+
 /// Graph-derived inspection plan. Paths are payload strings from bindb, not file reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnowledgePlan {
@@ -105,6 +116,8 @@ pub struct KnowledgePlan {
     pub primary_source: &'static str,
     /// Populated only when `plan_since` is used. Empty otherwise.
     pub recent_changes: Vec<RecentChange>,
+    /// Top-matched issues with body excerpts for LLM explain context.
+    pub linked_issues: Vec<LinkedIssueSummary>,
 }
 
 /// Doctrine evaluation as stored in bindb (finding counts, not source).
