@@ -44,6 +44,7 @@ fn run() -> Result<(), String> {
         &PlanRequest {
             workspace: workspace.map(PathBuf::from),
             request,
+            since_sha: None,
         },
     )
     .map_err(|err| err.to_string())?;

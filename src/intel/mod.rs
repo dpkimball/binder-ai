@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::knowledge::{Knowledge, KnowledgeError};
+use crate::knowledge::{Knowledge, KnowledgeError, RecentChange};
 use crate::workspace::{resolve_inspection_set_best_effort, WorkspaceLayout};
 
 /// IDE planning request. `workspace` is the execution root; bindb store is server-side.
@@ -17,6 +17,9 @@ pub struct PlanRequest {
     #[serde(default)]
     pub workspace: Option<PathBuf>,
     pub request: String,
+    /// When set, `recent_changes` in the response lists inspection-set files that
+    /// were added or removed between this SHA and HEAD. The SHA must already be indexed.
+    pub since_sha: Option<String>,
 }
 
 /// Whether bindb answered, answered incompletely, or could not answer.
@@ -69,6 +72,8 @@ pub struct PlanResponse {
     pub reasoning: String,
     pub doctrine: Vec<String>,
     pub impact: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub recent_changes: Vec<RecentChange>,
     pub metrics: PlanningMetrics,
 }
 
@@ -105,9 +110,11 @@ pub fn plan<K: Knowledge>(
     if text.is_empty() {
         return Err(IntelError::EmptyRequest);
     }
-    let knowledge_plan = knowledge
-        .plan(text)
-        .map_err(|err: KnowledgeError| IntelError::Knowledge(err.message))?;
+    let knowledge_plan = match request.since_sha.as_deref() {
+        Some(sha) => knowledge.plan_since(text, sha),
+        None => knowledge.plan(text),
+    }
+    .map_err(|err: KnowledgeError| IntelError::Knowledge(err.message))?;
     if knowledge_plan.primary_source != "bindb" {
         return Err(IntelError::Knowledge(
             "knowledge plan must declare primary_source bindb".into(),
@@ -178,6 +185,7 @@ pub fn plan<K: Knowledge>(
         reasoning: knowledge_plan.interpretation,
         doctrine: knowledge_plan.rules_must_remain_satisfied,
         impact: knowledge_plan.likely_affected,
+        recent_changes: knowledge_plan.recent_changes,
         metrics,
     })
 }
@@ -252,6 +260,7 @@ impl PlanResponse {
             unresolved: self.unresolved.clone(),
             reasoning: self.reasoning.clone(),
             impact: self.impact.clone(),
+            recent_changes: self.recent_changes.clone(),
             metrics: self.metrics.clone(),
         }
     }
@@ -283,6 +292,8 @@ pub struct AgentPlan {
     pub unresolved: Vec<UnresolvedTarget>,
     pub reasoning: String,
     pub impact: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub recent_changes: Vec<RecentChange>,
     pub metrics: PlanningMetrics,
 }
 

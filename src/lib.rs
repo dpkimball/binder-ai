@@ -45,7 +45,7 @@ pub use intel::{
 };
 pub use knowledge::{
     CodeintelCli, CodeintelKnowledge, DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError,
-    KnowledgePlan, MemoryKnowledge, ProcessCodeintelCli, ReindexStats,
+    KnowledgePlan, MemoryKnowledge, ProcessCodeintelCli, RecentChange, ReindexStats,
 };
 pub use mock::{MockAiClient, MockRouter, ScriptedProvider};
 pub use models::{
