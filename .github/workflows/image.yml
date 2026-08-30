@@ -1,0 +1,86 @@
+name: Image
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch: {}
+
+concurrency:
+  group: binder-ai-image-${{ github.ref }}
+  cancel-in-progress: true
+
+# Kellnr wiring matches binder-server deploy.yaml: configure-cargo-registry
+# + cargo_idx (index as-is) + build-push-action. Host/port stay in
+# PRIVATE_CARGO_URL. Destination differs (in-cluster registry, not GHCR).
+
+jobs:
+  docker:
+    runs-on: product-ci
+    timeout-minutes: 45
+    steps:
+      - name: Reset self-hosted workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "${GITHUB_WORKSPACE}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+      - uses: actions/checkout@v4
+        with:
+          path: binder-ai
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/codeintel
+          path: codeintel
+          token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/bindb
+          path: bindb
+          token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
+
+      - name: Configure Cargo registry dpk
+        uses: dpkimball/dpk-ci/.github/actions/configure-cargo-registry@master
+        with:
+          cargo_url: ${{ secrets.PRIVATE_CARGO_URL }}
+
+      - name: Cargo index for docker
+        id: cargo_idx
+        run: |
+          set -euo pipefail
+          test -n "${CARGO_REGISTRIES_DPK_INDEX:-}"
+          echo "index=${CARGO_REGISTRIES_DPK_INDEX}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # Host docker engine so tags/push hit localhost:30500 (QA registry).
+          driver: docker
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: localhost:30500/binder-ai-serve
+          tags: |
+            type=sha,format=short,prefix=sha-
+            type=raw,value=latest
+
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./binder-ai
+          file: ./binder-ai/Dockerfile
+          build-args: |
+            CARGO_REGISTRIES_DPK_INDEX=${{ steps.cargo_idx.outputs.index }}
+          build-contexts: |
+            bindb=./bindb
+            codeintel=./codeintel
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: ${{ github.event_name != 'pull_request' }}
+          provenance: false
+          sbom: false

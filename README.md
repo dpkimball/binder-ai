@@ -1,6 +1,7 @@
 # binder-ai
 
 [![CI](https://github.com/dpkimball/binder-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/dpkimball/binder-ai/actions/workflows/ci.yml)
+[![Image](https://github.com/dpkimball/binder-ai/actions/workflows/image.yml/badge.svg)](https://github.com/dpkimball/binder-ai/actions/workflows/image.yml)
 
 binder-ai is Binder's **autonomous engineering orchestrator**.
 
@@ -25,6 +26,15 @@ Architectural context comes from bindb (`Knowledge`) before any LLM call. See [d
 - `binder-ai-serve` (`--features intel`) — `POST /plan` engineering context for IDEs. No model, no writes.
 
 HTTP for **providers** stays in `binder-llm`. Engineering intelligence is `binder-ai-plan` (CLI) and `binder-ai-serve` (HTTP). Cursor in `dpk-workspace` must call `scripts/binder-plan` before searching the tree.
+
+QA (`binder-ai-serve-qa`, Argo `services-parent`): `GET /health` and `POST /plan` at `http://192.168.86.47:31784`. Image is built by `.github/workflows/image.yml` onto `localhost:30500`. Workstation:
+
+```sh
+export BINDER_AI_PLAN_URL=http://192.168.86.47:31784
+scripts/binder-plan "what docker files have been used"
+```
+
+Omit `workspace` in the JSON (the script does). The pod uses `BINDER_AI_WORKSPACE=/data/workspace` so inspect paths resolve against the seeded checkouts.
 
 ## Usage
 
