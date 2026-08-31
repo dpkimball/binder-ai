@@ -8,7 +8,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::knowledge::{Knowledge, KnowledgeError, LinkedIssueSummary, RecentChange};
+use crate::knowledge::{
+    Knowledge, KnowledgeError, LinkedDocSummary, LinkedIssueSummary, LinkedPrSummary, RecentChange,
+};
 use crate::workspace::{resolve_inspection_set_best_effort, WorkspaceLayout};
 
 /// IDE planning request. `workspace` is the execution root; bindb store is server-side.
@@ -77,6 +79,13 @@ pub struct PlanResponse {
     /// Top-matched issues with body excerpts for LLM explain context. Not included in AgentPlan.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub linked_issues: Vec<LinkedIssueSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_prs: Vec<LinkedPrSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_docs: Vec<LinkedDocSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub origin_issues: Vec<u64>,
+    pub matched_kind: String,
     pub metrics: PlanningMetrics,
 }
 
@@ -190,6 +199,10 @@ pub fn plan<K: Knowledge>(
         impact: knowledge_plan.likely_affected,
         recent_changes: knowledge_plan.recent_changes,
         linked_issues: knowledge_plan.linked_issues,
+        linked_prs: knowledge_plan.linked_prs,
+        linked_docs: knowledge_plan.linked_docs,
+        origin_issues: knowledge_plan.origin_issues,
+        matched_kind: knowledge_plan.matched_kind,
         metrics,
     })
 }
@@ -265,6 +278,10 @@ impl PlanResponse {
             reasoning: self.reasoning.clone(),
             impact: self.impact.clone(),
             recent_changes: self.recent_changes.clone(),
+            linked_prs: self.linked_prs.clone(),
+            linked_docs: self.linked_docs.clone(),
+            origin_issues: self.origin_issues.clone(),
+            matched_kind: self.matched_kind.clone(),
             metrics: self.metrics.clone(),
         }
     }
@@ -298,6 +315,13 @@ pub struct AgentPlan {
     pub impact: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub recent_changes: Vec<RecentChange>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_prs: Vec<LinkedPrSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_docs: Vec<LinkedDocSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub origin_issues: Vec<u64>,
+    pub matched_kind: String,
     pub metrics: PlanningMetrics,
 }
 

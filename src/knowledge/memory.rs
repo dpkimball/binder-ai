@@ -43,6 +43,10 @@ impl MemoryKnowledge {
                 primary_source: "bindb",
                 recent_changes: Vec::new(),
                 linked_issues: Vec::new(),
+                linked_prs: Vec::new(),
+                linked_docs: Vec::new(),
+                origin_issues: Vec::new(),
+                matched_kind: "none".into(),
             },
             DoctrineSnapshot {
                 repository: "fixture".into(),

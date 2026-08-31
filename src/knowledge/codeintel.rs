@@ -3,8 +3,8 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use super::{
-    DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError, KnowledgePlan,
-    LinkedIssueSummary, RecentChange, ReindexStats,
+    DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError, KnowledgePlan, LinkedDocSummary,
+    LinkedIssueSummary, LinkedPrSummary, RecentChange, ReindexStats,
 };
 
 /// Invoke the `codeintel` CLI (JSON on stdout).
@@ -223,6 +223,49 @@ pub fn plan_from_architecture_json(
                 .collect()
         })
         .unwrap_or_default();
+    let linked_prs = value
+        .get("linked_prs")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(LinkedPrSummary {
+                        number: v.get("number")?.as_u64()?,
+                        title: v.get("title")?.as_str()?.to_string(),
+                        url: v.get("url")?.as_str()?.to_string(),
+                        state: v.get("state")?.as_str()?.to_string(),
+                        repo: v.get("repo")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let linked_docs = value
+        .get("linked_docs")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(LinkedDocSummary {
+                        path: v.get("path")?.as_str()?.to_string(),
+                        title: v.get("title")?.as_str()?.to_string(),
+                        repo: v.get("repo")?.as_str()?.to_string(),
+                        kind: v.get("kind")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let origin_issues = value
+        .get("origin_issues")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect())
+        .unwrap_or_default();
+    let matched_kind = value
+        .get("matched_kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("none")
+        .to_string();
     Ok(KnowledgePlan {
         request: value
             .get("request")
@@ -241,6 +284,10 @@ pub fn plan_from_architecture_json(
         primary_source: "bindb",
         recent_changes,
         linked_issues,
+        linked_prs,
+        linked_docs,
+        origin_issues,
+        matched_kind,
     })
 }
 

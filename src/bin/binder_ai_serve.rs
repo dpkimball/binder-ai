@@ -194,8 +194,8 @@ async fn explain_handler(
         file_sections.join("\n\n")
     );
 
-    // Need 9B: append linked issue bodies as design rationale context.
-    // These come from the first plan() call — no second CLI spawn needed.
+    // Need 9B: append linked issue bodies and doc refs as design rationale context.
+    // All data comes from the first plan() call — no second CLI spawn needed.
     let issues: Vec<String> = plan_response
         .linked_issues
         .iter()
@@ -206,6 +206,16 @@ async fn explain_handler(
     if !issues.is_empty() {
         prompt.push_str("\n\n## Related Issues\n\n");
         prompt.push_str(&issues.join("\n\n"));
+    }
+    let docs: Vec<String> = plan_response
+        .linked_docs
+        .iter()
+        .take(3)
+        .map(|d| format!("- `{}` ({}/{})", d.path, d.repo, d.kind))
+        .collect();
+    if !docs.is_empty() {
+        prompt.push_str("\n\n## Related Documentation\n\n");
+        prompt.push_str(&docs.join("\n"));
     }
 
     prompt.push_str("\n\nAnswer:");
