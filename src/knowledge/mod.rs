@@ -104,6 +104,25 @@ pub struct LinkedIssueSummary {
     pub body_excerpt: String,
 }
 
+/// Linked PR (title + state; no body).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LinkedPrSummary {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    pub state: String,
+    pub repo: String,
+}
+
+/// Linked doc file (CLAUDE.md, spec, Helm chart, CI workflow).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LinkedDocSummary {
+    pub path: String,
+    pub title: String,
+    pub repo: String,
+    pub kind: String,
+}
+
 /// Graph-derived inspection plan. Paths are payload strings from bindb, not file reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnowledgePlan {
@@ -118,6 +137,14 @@ pub struct KnowledgePlan {
     pub recent_changes: Vec<RecentChange>,
     /// Top-matched issues with body excerpts for LLM explain context.
     pub linked_issues: Vec<LinkedIssueSummary>,
+    /// Top-matched PRs.
+    pub linked_prs: Vec<LinkedPrSummary>,
+    /// Top-matched doc files (CLAUDE.md, specs, Helm, CI).
+    pub linked_docs: Vec<LinkedDocSummary>,
+    /// Issue numbers linked to inspection-set files via git log REL_RESOLVES edges.
+    pub origin_issues: Vec<u64>,
+    /// Impact granularity: "symbol", "module", "crate", "file", "config", "none".
+    pub matched_kind: String,
 }
 
 /// Doctrine evaluation as stored in bindb (finding counts, not source).
