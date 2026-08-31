@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::knowledge::{
-    FileRoleSummary, Knowledge, KnowledgeError, LinkedDocSummary, LinkedIssueSummary,
-    LinkedPrSummary, RecentChange, TouchPointSummary,
+    FileRoleSummary, GuidanceSummary, Knowledge, KnowledgeError, LinkedDocSummary,
+    LinkedIssueSummary, LinkedPrSummary, RecentChange, TouchPointSummary,
 };
 use crate::workspace::{resolve_inspection_set_best_effort, WorkspaceLayout};
 
@@ -96,6 +96,8 @@ pub struct PlanResponse {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub task_hint: String,
     pub metrics: PlanningMetrics,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub guidance: Vec<GuidanceSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -217,6 +219,7 @@ pub fn plan<K: Knowledge>(
         matched_summary: knowledge_plan.matched_summary,
         task_hint: knowledge_plan.task_hint,
         metrics,
+        guidance: knowledge_plan.guidance,
     })
 }
 
@@ -300,6 +303,7 @@ impl PlanResponse {
             matched_summary: self.matched_summary.clone(),
             task_hint: self.task_hint.clone(),
             metrics: self.metrics.clone(),
+            guidance: self.guidance.clone(),
         }
     }
 
@@ -347,6 +351,8 @@ pub struct AgentPlan {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub task_hint: String,
     pub metrics: PlanningMetrics,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub guidance: Vec<GuidanceSummary>,
 }
 
 fn path_string(path: impl AsRef<std::path::Path>) -> String {

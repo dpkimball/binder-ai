@@ -131,6 +131,7 @@ impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
                     touch_sequence: Vec::new(),
                     matched_summary: String::new(),
                     task_hint: String::new(),
+                    guidance: Vec::new(),
                 },
                 0,
                 false,

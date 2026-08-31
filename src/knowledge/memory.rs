@@ -51,6 +51,7 @@ impl MemoryKnowledge {
                 touch_sequence: Vec::new(),
                 matched_summary: String::new(),
                 task_hint: String::new(),
+                guidance: Vec::new(),
             },
             DoctrineSnapshot {
                 repository: "fixture".into(),

@@ -3,9 +3,9 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use super::{
-    DoctrineSnapshot, ExecutionRecord, FileRoleSummary, Knowledge, KnowledgeError, KnowledgePlan,
-    LinkedDocSummary, LinkedIssueSummary, LinkedPrSummary, RecentChange, ReindexStats,
-    TouchPointSummary,
+    DoctrineSnapshot, ExecutionRecord, FileRoleSummary, GuidanceSummary, Knowledge, KnowledgeError,
+    KnowledgePlan, LinkedDocSummary, LinkedIssueSummary, LinkedPrSummary, RecentChange,
+    ReindexStats, TouchPointSummary,
 };
 
 /// Invoke the `codeintel` CLI (JSON on stdout).
@@ -307,6 +307,21 @@ pub fn plan_from_architecture_json(
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
+    let guidance = value
+        .get("guidance")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(GuidanceSummary {
+                        id: v.get("id")?.as_str()?.to_string(),
+                        question: v.get("question")?.as_str()?.to_string(),
+                        answer: v.get("answer")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(KnowledgePlan {
         request: value
             .get("request")
@@ -333,6 +348,7 @@ pub fn plan_from_architecture_json(
         touch_sequence,
         matched_summary,
         task_hint,
+        guidance,
     })
 }
 

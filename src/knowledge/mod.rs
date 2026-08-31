@@ -140,6 +140,14 @@ pub struct TouchPointSummary {
     pub action: String,
 }
 
+/// Pre-authored Q&A guidance item surfaced by plan() when query tokens overlap.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GuidanceSummary {
+    pub id: String,
+    pub question: String,
+    pub answer: String,
+}
+
 /// Graph-derived inspection plan. Paths are payload strings from bindb, not file reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnowledgePlan {
@@ -170,6 +178,8 @@ pub struct KnowledgePlan {
     pub matched_summary: String,
     /// Advice when touch_sequence is non-empty.
     pub task_hint: String,
+    /// Pre-authored Q&A pairs from the question bank. Empty when no questions matched.
+    pub guidance: Vec<GuidanceSummary>,
 }
 
 /// Doctrine evaluation as stored in bindb (finding counts, not source).
