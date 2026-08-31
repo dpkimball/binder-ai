@@ -1,3 +1,9 @@
+---
+title: binder-ai
+description: Specification for binder-ai, the AI orchestration layer that routes all AI traffic through AiClient and owns workflows, context, routing, and semantic retries.
+category: specs
+---
+
 # binder-ai
 
 github_issue: https://github.com/dpkimball/binder-ai/issues/1

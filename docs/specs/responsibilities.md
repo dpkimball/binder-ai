@@ -1,5 +1,7 @@
 ---
 title: bindb, binder-ai, and binder-llm responsibilities
+description: Defines the responsibility boundaries between bindb (facts), binder-ai (orchestration), and binder-llm (reasoning), with decision rules for when each component is used.
+category: specs
 status: spec
 github_issue: https://github.com/dpkimball/binder-ai/issues/14
 ---

@@ -1,5 +1,7 @@
 ---
 title: Agent Workflow POC #1 — Hygiene from bindb
+description: Specification for HygieneWorkflow, the bindb-first apply path that consumes discovery findings, resolves semantic targets, and skips LLM for deterministic hygiene operations.
+category: specs
 status: spec
 github_issue: https://github.com/dpkimball/binder-ai/issues/16
 github_issue_e2e: https://github.com/dpkimball/binder-ai/issues/18

@@ -1,5 +1,7 @@
 ---
 title: Engineering intelligence service — POST /plan
+description: Specification for the binder-ai engineering intelligence service that answers IDE planning requests via POST /plan without invoking a model.
+category: specs
 status: spec
 github_issue: https://github.com/dpkimball/binder-ai/issues/26
 ---

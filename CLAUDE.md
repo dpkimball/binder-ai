@@ -16,7 +16,7 @@ Do **not** create a `binder-runtime` crate. Keep `Runtime` here until multiple a
 
 ## Layout
 
-```
+```text
 src/
   client.rs, builder.rs, config.rs   # AiClient
   task.rs, request.rs, response.rs
