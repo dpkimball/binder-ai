@@ -9,7 +9,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::knowledge::{
-    Knowledge, KnowledgeError, LinkedDocSummary, LinkedIssueSummary, LinkedPrSummary, RecentChange,
+    FileRoleSummary, Knowledge, KnowledgeError, LinkedDocSummary, LinkedIssueSummary,
+    LinkedPrSummary, RecentChange, TouchPointSummary,
 };
 use crate::workspace::{resolve_inspection_set_best_effort, WorkspaceLayout};
 
@@ -86,6 +87,14 @@ pub struct PlanResponse {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub origin_issues: Vec<u64>,
     pub matched_kind: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub file_roles: Vec<FileRoleSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub touch_sequence: Vec<TouchPointSummary>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub matched_summary: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub task_hint: String,
     pub metrics: PlanningMetrics,
 }
 
@@ -203,6 +212,10 @@ pub fn plan<K: Knowledge>(
         linked_docs: knowledge_plan.linked_docs,
         origin_issues: knowledge_plan.origin_issues,
         matched_kind: knowledge_plan.matched_kind,
+        file_roles: knowledge_plan.file_roles,
+        touch_sequence: knowledge_plan.touch_sequence,
+        matched_summary: knowledge_plan.matched_summary,
+        task_hint: knowledge_plan.task_hint,
         metrics,
     })
 }
@@ -282,6 +295,10 @@ impl PlanResponse {
             linked_docs: self.linked_docs.clone(),
             origin_issues: self.origin_issues.clone(),
             matched_kind: self.matched_kind.clone(),
+            file_roles: self.file_roles.clone(),
+            touch_sequence: self.touch_sequence.clone(),
+            matched_summary: self.matched_summary.clone(),
+            task_hint: self.task_hint.clone(),
             metrics: self.metrics.clone(),
         }
     }
@@ -321,6 +338,14 @@ pub struct AgentPlan {
     pub linked_docs: Vec<LinkedDocSummary>,
     pub origin_issues: Vec<u64>,
     pub matched_kind: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub file_roles: Vec<FileRoleSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub touch_sequence: Vec<TouchPointSummary>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub matched_summary: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub task_hint: String,
     pub metrics: PlanningMetrics,
 }
 
