@@ -319,7 +319,6 @@ pub struct AgentPlan {
     pub linked_prs: Vec<LinkedPrSummary>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub linked_docs: Vec<LinkedDocSummary>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub origin_issues: Vec<u64>,
     pub matched_kind: String,
     pub metrics: PlanningMetrics,
