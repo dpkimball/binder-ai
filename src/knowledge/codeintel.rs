@@ -3,8 +3,9 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use super::{
-    DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError, KnowledgePlan, LinkedDocSummary,
-    LinkedIssueSummary, LinkedPrSummary, RecentChange, ReindexStats,
+    DoctrineSnapshot, ExecutionRecord, FileRoleSummary, Knowledge, KnowledgeError, KnowledgePlan,
+    LinkedDocSummary, LinkedIssueSummary, LinkedPrSummary, RecentChange, ReindexStats,
+    TouchPointSummary,
 };
 
 /// Invoke the `codeintel` CLI (JSON on stdout).
@@ -266,6 +267,46 @@ pub fn plan_from_architecture_json(
         .and_then(|v| v.as_str())
         .unwrap_or("none")
         .to_string();
+    let file_roles = value
+        .get("file_roles")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(FileRoleSummary {
+                        path: v.get("path")?.as_str()?.to_string(),
+                        role: v.get("role")?.as_str()?.to_string(),
+                        note: v.get("note")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let touch_sequence = value
+        .get("touch_sequence")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(TouchPointSummary {
+                        file: v.get("file")?.as_str()?.to_string(),
+                        role: v.get("role")?.as_str()?.to_string(),
+                        action: v.get("action")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let matched_summary = value
+        .get("matched_summary")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let task_hint = value
+        .get("task_hint")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
     Ok(KnowledgePlan {
         request: value
             .get("request")
@@ -288,6 +329,10 @@ pub fn plan_from_architecture_json(
         linked_docs,
         origin_issues,
         matched_kind,
+        file_roles,
+        touch_sequence,
+        matched_summary,
+        task_hint,
     })
 }
 

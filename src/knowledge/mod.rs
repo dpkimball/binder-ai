@@ -123,6 +123,23 @@ pub struct LinkedDocSummary {
     pub kind: String,
 }
 
+/// Per-file role classification relative to the matched symbol.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileRoleSummary {
+    pub path: String,
+    /// "definition", "call_site", "implementation", "test", "entry_point", "dependency"
+    pub role: String,
+    pub note: String,
+}
+
+/// One ordered change site for structural task patterns.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TouchPointSummary {
+    pub file: String,
+    pub role: String,
+    pub action: String,
+}
+
 /// Graph-derived inspection plan. Paths are payload strings from bindb, not file reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnowledgePlan {
@@ -145,6 +162,14 @@ pub struct KnowledgePlan {
     pub origin_issues: Vec<u64>,
     /// Impact granularity: "symbol", "module", "crate", "file", "config", "none".
     pub matched_kind: String,
+    /// Per-file role classification relative to the matched symbol.
+    pub file_roles: Vec<FileRoleSummary>,
+    /// Ordered change sites for structural tasks (symbol/module matches only).
+    pub touch_sequence: Vec<TouchPointSummary>,
+    /// One-sentence summary of definition and top call sites.
+    pub matched_summary: String,
+    /// Advice when touch_sequence is non-empty.
+    pub task_hint: String,
 }
 
 /// Doctrine evaluation as stored in bindb (finding counts, not source).

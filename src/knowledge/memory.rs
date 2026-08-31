@@ -47,6 +47,10 @@ impl MemoryKnowledge {
                 linked_docs: Vec::new(),
                 origin_issues: Vec::new(),
                 matched_kind: "none".into(),
+                file_roles: Vec::new(),
+                touch_sequence: Vec::new(),
+                matched_summary: String::new(),
+                task_hint: String::new(),
             },
             DoctrineSnapshot {
                 repository: "fixture".into(),
