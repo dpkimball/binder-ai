@@ -2,6 +2,8 @@
 #
 # Plan service: binder-ai-serve + codeintel CLI. Store is mounted at /data.
 # codeintel/bindb come from named BuildKit contexts (siblings in CI / make b).
+# Rebuild this image whenever codeintel gains CLI surface the chart relies on
+# (e.g. `architecture doc-compliance` for the store-refresh sidecar).
 # binder-llm comes from Kellnr (registry dpk), same as binder-server.
 # Index: CARGO_REGISTRIES_DPK_INDEX (env.sh locally; PRIVATE_CARGO_URL in CI).
 # Local docker: dpk.toml extra_args uses host.docker.internal (DEV Kellnr).
