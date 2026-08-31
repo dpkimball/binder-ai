@@ -1,5 +1,7 @@
 ---
 title: Semantic planning before repository discovery
+description: Contract requiring that engineering requests attempt bindb planning before repository-wide discovery, with search as an explicit fallback only when fallback_required is true.
+category: specs
 status: spec
 github_issue: https://github.com/dpkimball/binder-ai/issues/27
 ---

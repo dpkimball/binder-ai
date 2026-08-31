@@ -1,3 +1,9 @@
+---
+title: binder-ai as-built
+description: As-built architecture for binder-ai, documenting the runtime components, request path, workflows, and component relationships.
+category: architecture
+---
+
 # binder-ai as-built
 
 `binder-ai` is a Rust library. Applications construct [`AiClient`] for model work and [`Runtime`] for the development environment. They do not call `binder-llm` or touch the filesystem directly from workflows.

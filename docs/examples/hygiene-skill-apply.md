@@ -1,3 +1,9 @@
+---
+title: Cursor skill → HygieneWorkflow
+description: Example showing how to invoke the hygiene apply workflow from a Cursor skill using the hygiene_apply binary.
+category: examples
+---
+
 # Cursor skill → HygieneWorkflow
 
 Discovery stays on the skill (git, GitHub, CI, `cargo fmt --check`, README). This example only **applies**.

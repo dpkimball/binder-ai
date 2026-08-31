@@ -1,3 +1,9 @@
+---
+title: Plan client (engineering intelligence)
+description: Example invocations of binder-ai-plan and binder-ai-serve for IDE engineering intelligence planning requests.
+category: examples
+---
+
 # Plan client (engineering intelligence)
 
 The IDE sends a request. binder-ai returns the inspect set. The client opens only those files. Cursor in this workspace uses the one-shot CLI (compact JSON, no daemon).
