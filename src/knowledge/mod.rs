@@ -162,6 +162,8 @@ pub struct GuidanceSummary {
     pub version: u64,
     #[serde(default)]
     pub match_score: u32,
+    #[serde(default)]
+    pub aliases: Vec<String>,
 }
 
 /// Graph-derived inspection plan. Paths are payload strings from bindb, not file reads.
