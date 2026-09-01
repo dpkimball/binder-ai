@@ -303,7 +303,13 @@ async fn ask_handler(
     let repo_doc_sections = doc_sections.len();
     file_sections.extend(doc_sections);
 
-    if let Err(reason) = assess_ask_context(&repo, &plan_response, &files_read, repo_doc_sections, &repo_guidance) {
+    if let Err(reason) = assess_ask_context(
+        &repo,
+        &plan_response,
+        &files_read,
+        repo_doc_sections,
+        &repo_guidance,
+    ) {
         return Err((StatusCode::UNPROCESSABLE_ENTITY, reason.message().into()));
     }
 
@@ -410,7 +416,12 @@ async fn patch_question_handler(
             &answer,
         ])
         .output()
-        .map_err(|err| (StatusCode::BAD_GATEWAY, format!("codeintel spawn failed: {err}")))?;
+        .map_err(|err| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("codeintel spawn failed: {err}"),
+            )
+        })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err((
@@ -470,7 +481,12 @@ async fn run_codeintel_put(
             answer,
         ])
         .output()
-        .map_err(|err| (StatusCode::BAD_GATEWAY, format!("codeintel spawn failed: {err}")))?;
+        .map_err(|err| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("codeintel spawn failed: {err}"),
+            )
+        })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err((

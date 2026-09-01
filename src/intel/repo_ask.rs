@@ -66,11 +66,7 @@ pub fn filter_paths_for_repo(paths: &[String], repo: &str) -> Vec<String> {
 
 /// Prefer docs indexed for the requested repo.
 pub fn filter_linked_docs_for_repo(docs: &[LinkedDocSummary], repo: &str) -> Vec<LinkedDocSummary> {
-    let scoped: Vec<_> = docs
-        .iter()
-        .filter(|d| d.repo == repo)
-        .cloned()
-        .collect();
+    let scoped: Vec<_> = docs.iter().filter(|d| d.repo == repo).cloned().collect();
     if scoped.is_empty() {
         docs.to_vec()
     } else {
@@ -79,10 +75,7 @@ pub fn filter_linked_docs_for_repo(docs: &[LinkedDocSummary], repo: &str) -> Vec
 }
 
 /// Repo-specific guidance first, then cross-repo (`X*`).
-pub fn filter_guidance_for_repo(
-    guidance: &[GuidanceSummary],
-    repo: &str,
-) -> Vec<GuidanceSummary> {
+pub fn filter_guidance_for_repo(guidance: &[GuidanceSummary], repo: &str) -> Vec<GuidanceSummary> {
     let Some(prefix) = guidance_id_prefix(repo) else {
         return guidance.to_vec();
     };
@@ -122,9 +115,9 @@ pub fn assess_ask_context(
     }
 
     if plan.planning_result == PlanningResult::Unresolved {
-        let has_repo_specific = repo_guidance.iter().any(|g| {
-            guidance_id_prefix(repo).is_some_and(|prefix| g.id.starts_with(prefix))
-        });
+        let has_repo_specific = repo_guidance
+            .iter()
+            .any(|g| guidance_id_prefix(repo).is_some_and(|prefix| g.id.starts_with(prefix)));
         if !has_repo_specific && !has_repo_files && !has_repo_docs {
             return Err(AskRejectReason::UnresolvedWithoutRepoContext);
         }
@@ -290,7 +283,10 @@ mod tests {
     use super::*;
     use crate::intel::PlanningMetrics;
 
-    fn sample_plan(planning_result: PlanningResult, guidance: Vec<GuidanceSummary>) -> PlanResponse {
+    fn sample_plan(
+        planning_result: PlanningResult,
+        guidance: Vec<GuidanceSummary>,
+    ) -> PlanResponse {
         PlanResponse {
             planning_source: "bindb",
             planning_result,
@@ -337,10 +333,7 @@ mod tests {
 
     #[test]
     fn resolve_correction_id_prefers_explicit_bank_id() {
-        assert_eq!(
-            resolve_correction_id(Some("C1"), "any question"),
-            "C1"
-        );
+        assert_eq!(resolve_correction_id(Some("C1"), "any question"), "C1");
         assert!(resolve_correction_id(None, "What is make b?").starts_with("COR-"));
     }
 
