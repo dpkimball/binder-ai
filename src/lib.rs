@@ -40,13 +40,15 @@ pub use conversation::{
 };
 pub use error::{AiError, Result};
 pub use intel::{
-    classify_planning, plan, AgentPlan, FallbackReason, IntelError, PlanRequest, PlanResponse,
-    PlanningDecision, PlanningMetrics, PlanningResult, UnresolvedTarget,
+    assess_ask_context, build_ask_prompt, build_explain_prompt, classify_planning, correction_id,
+    filter_guidance_for_repo, filter_linked_docs_for_repo, filter_paths_for_repo, lang_hint, plan,
+    resolve_correction_id, safe_truncate, AgentPlan, AskRejectReason, FallbackReason, IntelError,
+    PlanRequest, PlanResponse, PlanningDecision, PlanningMetrics, PlanningResult, UnresolvedTarget,
 };
 pub use knowledge::{
-    CodeintelCli, CodeintelKnowledge, DoctrineSnapshot, ExecutionRecord, Knowledge, KnowledgeError,
-    KnowledgePlan, LinkedDocSummary, LinkedIssueSummary, LinkedPrSummary, MemoryKnowledge,
-    ProcessCodeintelCli, RecentChange, ReindexStats,
+    CodeintelCli, CodeintelKnowledge, DoctrineSnapshot, ExecutionRecord, GuidanceSummary,
+    Knowledge, KnowledgeError, KnowledgePlan, LinkedDocSummary, LinkedIssueSummary,
+    LinkedPrSummary, MemoryKnowledge, ProcessCodeintelCli, RecentChange, ReindexStats,
 };
 pub use mock::{MockAiClient, MockRouter, ScriptedProvider};
 pub use models::{

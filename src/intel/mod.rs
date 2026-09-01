@@ -4,6 +4,14 @@
 //! or modify files. Repository discovery is a client fallback, never this
 //! module.
 
+mod repo_ask;
+
+pub use repo_ask::{
+    assess_ask_context, build_ask_prompt, build_explain_prompt, correction_id,
+    filter_guidance_for_repo, filter_linked_docs_for_repo, filter_paths_for_repo, lang_hint,
+    resolve_correction_id, safe_truncate, AskRejectReason,
+};
+
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
