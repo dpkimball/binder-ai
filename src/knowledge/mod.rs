@@ -37,6 +37,8 @@ pub trait Knowledge: Send + Sync {
     ) -> std::result::Result<(), KnowledgeError> {
         Ok(())
     }
+    /// Repo names present in the bindb store (`architecture summary`).
+    fn indexed_repos(&self) -> std::result::Result<Vec<String>, KnowledgeError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -87,6 +89,10 @@ impl<K: Knowledge + ?Sized> Knowledge for std::sync::Arc<K> {
         binds: Vec<(String, PathBuf)>,
     ) -> std::result::Result<(), KnowledgeError> {
         (**self).bind_execution_workspace(binds)
+    }
+
+    fn indexed_repos(&self) -> std::result::Result<Vec<String>, KnowledgeError> {
+        (**self).indexed_repos()
     }
 }
 
@@ -154,6 +160,8 @@ pub struct GuidanceSummary {
     pub answer: String,
     #[serde(default)]
     pub version: u64,
+    #[serde(default)]
+    pub match_score: u32,
 }
 
 /// Graph-derived inspection plan. Paths are payload strings from bindb, not file reads.

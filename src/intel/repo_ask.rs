@@ -3,25 +3,51 @@
 use super::{PlanResponse, PlanningResult};
 use crate::knowledge::{GuidanceSummary, LinkedDocSummary, LinkedIssueSummary};
 
+/// Minimum token overlap for guidance-first `/ask` (repo-prefix row only).
+pub const GUIDANCE_ASK_MIN_SCORE: u32 = 2;
+
 /// Why `/ask` refused to call the LLM.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AskRejectReason {
     NoContext,
     UnresolvedWithoutRepoContext,
+    RepoNotIndexed(String),
 }
 
 impl AskRejectReason {
-    pub fn message(&self) -> &'static str {
+    pub fn message(&self) -> String {
         match self {
             Self::NoContext => {
                 "no bindb context for this repo/question; index the repo or store a question first"
+                    .into()
             }
             Self::UnresolvedWithoutRepoContext => {
                 "plan unresolved for this repo with no repo-scoped files, docs, or guidance; \
                  index the repo or store a question first"
+                    .into()
             }
+            Self::RepoNotIndexed(repo) => format!("repo not indexed: {repo}"),
         }
     }
+}
+
+/// True when the repo has a bank prefix or appears in the bindb store index list.
+pub fn is_repo_known(repo: &str, indexed_repos: &[String]) -> bool {
+    guidance_id_prefix(repo).is_some() || indexed_repos.iter().any(|r| r == repo)
+}
+
+/// Highest-scoring repo-prefix guidance row meeting the ask threshold, if any.
+pub fn select_bank_answer(
+    repo: &str,
+    filtered_guidance: &[GuidanceSummary],
+) -> Option<(String, String, u32)> {
+    let prefix = guidance_id_prefix(repo)?;
+    filtered_guidance
+        .iter()
+        .filter(|g| g.id.starts_with(prefix))
+        .max_by_key(|g| g.match_score)
+        .filter(|g| g.match_score >= GUIDANCE_ASK_MIN_SCORE)
+        .map(|g| (g.id.clone(), g.answer.clone(), g.match_score))
 }
 
 /// Stable id for agent corrections when no bank id was returned from `/ask`.
@@ -102,10 +128,14 @@ pub fn filter_linked_issues_for_repo(
     issues.iter().filter(|i| i.repo == repo).cloned().collect()
 }
 
-/// Repo-specific guidance first, then cross-repo (`X*`).
+/// Repo-specific guidance first, then cross-repo (`X*`). Prefix-less repos get `X*` only.
 pub fn filter_guidance_for_repo(guidance: &[GuidanceSummary], repo: &str) -> Vec<GuidanceSummary> {
     let Some(prefix) = guidance_id_prefix(repo) else {
-        return guidance.to_vec();
+        return guidance
+            .iter()
+            .filter(|g| g.id.starts_with('X'))
+            .cloned()
+            .collect();
     };
     let mut repo_specific: Vec<_> = guidance
         .iter()
@@ -162,13 +192,23 @@ pub fn build_ask_prompt(
     plan: &PlanResponse,
     file_sections: &[String],
     guidance: &[GuidanceSummary],
+    inference_mode: bool,
 ) -> String {
     let mut prompt = format!(
         "You are an expert software engineer. Answer this question about the **{repo}** \
          repository using the bindb metadata and source excerpts below.\n\n\
          > {question}\n\n\
-         Rules:\n\
-         - Scope your answer to **{repo}** only; do not describe other repositories unless \
+         Rules:\n"
+    );
+    if inference_mode {
+        prompt.push_str(&format!(
+            "- No authoritative question-bank row matched at confidence ≥{}. Do not state \
+             constraints as facts unless supported by `{repo}/` excerpts.\n",
+            GUIDANCE_ASK_MIN_SCORE
+        ));
+    }
+    prompt.push_str(&format!(
+        "         - Scope your answer to **{repo}** only; do not describe other repositories unless \
            cross-repo guidance explicitly requires it.\n\
          - Write **2–5 sentences** stating engineering **constraints** directly (question-bank \
            style). Not a summary essay.\n\
@@ -181,7 +221,7 @@ pub fn build_ask_prompt(
            authoritative answers.\n\
          - If `{repo}/` excerpts and guidance do not support a confident answer, reply exactly: \
            `Insufficient indexed context for {repo} to answer this.`\n"
-    );
+    ));
 
     if !guidance.is_empty() {
         prompt.push_str(
@@ -391,18 +431,21 @@ mod tests {
                 question: "plan vs serve?".into(),
                 answer: "Neither calls a model for plan().".into(),
                 version: 1,
+                match_score: 0,
             },
             GuidanceSummary {
                 id: "C1".into(),
                 question: "boundary?".into(),
                 answer: "codeintel writes bindb.".into(),
                 version: 1,
+                match_score: 3,
             },
             GuidanceSummary {
                 id: "X1".into(),
                 question: "SPIDER?".into(),
                 answer: "Specify Plan Implement Deploy Evaluate Retro.".into(),
                 version: 1,
+                match_score: 0,
             },
         ];
         let filtered = filter_guidance_for_repo(&guidance, "codeintel");
@@ -419,6 +462,7 @@ mod tests {
                 question: "tests?".into(),
                 answer: "mock only".into(),
                 version: 1,
+                match_score: 0,
             }],
             "foreman",
         );
@@ -436,6 +480,7 @@ mod tests {
                 question: "tests?".into(),
                 answer: "mock only".into(),
                 version: 1,
+                match_score: 0,
             }],
         );
         let err = assess_ask_context("foreman", &plan, &[], 0, &[]).unwrap_err();
@@ -450,6 +495,7 @@ mod tests {
                 question: "make b?".into(),
                 answer: "Build and deploy to dev.".into(),
                 version: 1,
+                match_score: 0,
             }],
             "foreman",
         );
@@ -465,12 +511,14 @@ mod tests {
                 question: "boundary?".into(),
                 answer: "repo-dashboard scans git; do not add Foreman intake.".into(),
                 version: 1,
+                match_score: 0,
             },
             GuidanceSummary {
                 id: "C1".into(),
                 question: "codeintel?".into(),
                 answer: "domain layer.".into(),
                 version: 1,
+                match_score: 0,
             },
         ];
         let filtered = filter_guidance_for_repo(&guidance, "repo-dashboard");
@@ -486,6 +534,7 @@ mod tests {
                 question: "boundary?".into(),
                 answer: "repo-dashboard must not mutate QA.".into(),
                 version: 1,
+                match_score: 0,
             }],
             "repo-dashboard",
         );
@@ -500,6 +549,7 @@ mod tests {
             question: "What is the boundary?".into(),
             answer: "codeintel writes a Git-synced semantic graph into bindb.".into(),
             version: 1,
+            match_score: 0,
         }];
         let prompt = build_ask_prompt(
             "codeintel",
@@ -507,6 +557,7 @@ mod tests {
             &sample_plan(PlanningResult::Resolved, guidance.clone()),
             &[],
             &guidance,
+            false,
         );
         assert!(prompt.contains("Authoritative answers"));
         assert!(prompt.contains("codeintel writes a Git-synced semantic graph"));
@@ -557,6 +608,7 @@ mod tests {
             question: "Difference between binder-ai-plan and binder-ai-serve?".into(),
             answer: "Neither calls a model for plan(). binder-ai-serve exposes POST /plan and POST /explain.".into(),
             version: 1,
+            match_score: 0,
         }];
         let prompt = build_ask_prompt(
             "binder-ai",
@@ -564,8 +616,80 @@ mod tests {
             &sample_plan(PlanningResult::Resolved, guidance.clone()),
             &[],
             &guidance,
+            false,
         );
         assert!(prompt.contains("A4"));
         assert!(prompt.contains("Neither calls a model for plan()"));
+    }
+
+    #[test]
+    fn select_bank_answer_requires_min_score() {
+        let guidance = vec![GuidanceSummary {
+            id: "C1".into(),
+            question: "boundary?".into(),
+            answer: "bank text".into(),
+            version: 1,
+            match_score: 1,
+        }];
+        assert!(select_bank_answer("codeintel", &guidance).is_none());
+        let guidance = vec![GuidanceSummary {
+            id: "C1".into(),
+            question: "boundary?".into(),
+            answer: "bank text".into(),
+            version: 1,
+            match_score: 2,
+        }];
+        let hit = select_bank_answer("codeintel", &guidance).unwrap();
+        assert_eq!(hit.0, "C1");
+        assert_eq!(hit.1, "bank text");
+        assert_eq!(hit.2, 2);
+    }
+
+    #[test]
+    fn prefix_less_repo_gets_x_guidance_only() {
+        let guidance = vec![
+            GuidanceSummary {
+                id: "C1".into(),
+                question: "codeintel?".into(),
+                answer: "domain".into(),
+                version: 1,
+                match_score: 3,
+            },
+            GuidanceSummary {
+                id: "X3".into(),
+                question: "propagation?".into(),
+                answer: "cross".into(),
+                version: 1,
+                match_score: 2,
+            },
+        ];
+        let filtered = filter_guidance_for_repo(&guidance, "keepsake");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "X3");
+    }
+
+    #[test]
+    fn is_repo_known_accepts_prefix_or_indexed() {
+        assert!(is_repo_known("codeintel", &[]));
+        assert!(is_repo_known("keepsake", &["keepsake".into()]));
+        assert!(!is_repo_known("keepsake", &[]));
+        assert!(!is_repo_known(
+            "nonexistent-repo-xyz",
+            &["codeintel".into()]
+        ));
+    }
+
+    #[test]
+    fn inference_prompt_includes_low_confidence_disclaimer() {
+        let prompt = build_ask_prompt(
+            "codeintel",
+            "kafka?",
+            &sample_plan(PlanningResult::Resolved, vec![]),
+            &[],
+            &[],
+            true,
+        );
+        assert!(prompt.contains("No authoritative question-bank row matched"));
+        assert!(prompt.contains("codeintel/"));
     }
 }

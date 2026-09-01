@@ -12,10 +12,10 @@ use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use binder_ai::{
     assess_ask_context, build_ask_prompt, build_explain_prompt, filter_guidance_for_repo,
-    filter_linked_docs_strict_for_repo, filter_paths_for_repo, lang_hint, parse_scoped_ask, plan,
-    resolve_correction_id, safe_truncate, AiClient, AiClientBuilder, AiRequest, CodeintelKnowledge,
-    DomainError, IntelError, PlanRequest, PlanResponse, ProcessCodeintelCli, ScopedAskBody,
-    TaskKind,
+    filter_linked_docs_strict_for_repo, filter_paths_for_repo, is_repo_known, lang_hint,
+    parse_scoped_ask, plan, resolve_correction_id, safe_truncate, select_bank_answer, AiClient,
+    AiClientBuilder, AiRequest, CodeintelKnowledge, DomainError, IntelError, Knowledge,
+    PlanRequest, PlanResponse, ProcessCodeintelCli, ScopedAskBody, TaskKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -105,6 +105,9 @@ struct ExplainResponse {
 #[derive(Debug, Serialize)]
 struct AskResponse {
     answer: String,
+    answer_source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    primary_guidance_id: Option<String>,
     repo: String,
     files_read: Vec<String>,
     guidance: Vec<GuidanceOut>,
@@ -129,6 +132,7 @@ struct GuidanceOut {
     question: String,
     answer: String,
     version: u64,
+    match_score: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -390,6 +394,17 @@ async fn execute_ask(
         return Err((StatusCode::BAD_REQUEST, "empty question".into()));
     }
 
+    let indexed_repos = state
+        .knowledge
+        .indexed_repos()
+        .map_err(|err| (StatusCode::BAD_GATEWAY, err.message))?;
+    if !is_repo_known(&repo, &indexed_repos) {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("repo not indexed: {repo}"),
+        ));
+    }
+
     let plan_request = PlanRequest {
         workspace: request.workspace.clone(),
         request: format!("{repo}: {question}"),
@@ -398,6 +413,26 @@ async fn execute_ask(
     let plan_response = plan_or_bad_gateway(&state.knowledge, &plan_request)?;
 
     let repo_guidance = filter_guidance_for_repo(&plan_response.guidance, &repo);
+
+    if let Some((id, answer, _score)) = select_bank_answer(&repo, &repo_guidance) {
+        let winning = repo_guidance
+            .iter()
+            .find(|g| g.id == id)
+            .expect("select_bank_answer id must exist in filtered guidance");
+        return Ok(Json(ask_response_from_parts(
+            answer,
+            "bank",
+            Some(id),
+            repo,
+            vec![],
+            vec![guidance_out(winning)],
+            vec![],
+            vec![],
+            plan_response.inspection_set.len(),
+            &plan_response,
+        )));
+    }
+
     let repo_docs = filter_linked_docs_strict_for_repo(&plan_response.linked_docs, &repo);
 
     let workspace = request
@@ -420,7 +455,7 @@ async fn execute_ask(
         repo_doc_sections,
         &repo_guidance,
     ) {
-        return Err((StatusCode::UNPROCESSABLE_ENTITY, reason.message().into()));
+        return Err((StatusCode::UNPROCESSABLE_ENTITY, reason.message()));
     }
 
     let prompt = build_ask_prompt(
@@ -429,23 +464,18 @@ async fn execute_ask(
         &plan_response,
         &file_sections,
         &repo_guidance,
+        true,
     );
     let answer = run_llm(&state.ai_client, prompt).await?;
 
-    Ok(Json(AskResponse {
+    Ok(Json(ask_response_from_parts(
         answer,
-        repo: repo.clone(),
+        "inference",
+        None,
+        repo,
         files_read,
-        guidance: repo_guidance
-            .iter()
-            .map(|g| GuidanceOut {
-                id: g.id.clone(),
-                question: g.question.clone(),
-                answer: g.answer.clone(),
-                version: g.version,
-            })
-            .collect(),
-        linked_docs: repo_docs
+        repo_guidance.iter().map(guidance_out).collect(),
+        repo_docs
             .iter()
             .take(5)
             .map(|d| DocRefOut {
@@ -455,7 +485,7 @@ async fn execute_ask(
                 title: d.title.clone(),
             })
             .collect(),
-        linked_issues: plan_response
+        plan_response
             .linked_issues
             .iter()
             .take(5)
@@ -464,7 +494,44 @@ async fn execute_ask(
                 title: i.title.clone(),
             })
             .collect(),
-        inspection_set_size: plan_response.inspection_set.len(),
+        plan_response.inspection_set.len(),
+        &plan_response,
+    )))
+}
+
+fn guidance_out(g: &binder_ai::GuidanceSummary) -> GuidanceOut {
+    GuidanceOut {
+        id: g.id.clone(),
+        question: g.question.clone(),
+        answer: g.answer.clone(),
+        version: g.version,
+        match_score: g.match_score,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn ask_response_from_parts(
+    answer: String,
+    answer_source: &str,
+    primary_guidance_id: Option<String>,
+    repo: String,
+    files_read: Vec<String>,
+    guidance: Vec<GuidanceOut>,
+    linked_docs: Vec<DocRefOut>,
+    linked_issues: Vec<IssueRefOut>,
+    inspection_set_size: usize,
+    plan_response: &PlanResponse,
+) -> AskResponse {
+    AskResponse {
+        answer,
+        answer_source: answer_source.into(),
+        primary_guidance_id,
+        repo,
+        files_read,
+        guidance,
+        linked_docs,
+        linked_issues,
+        inspection_set_size,
         planning_result: format!("{:?}", plan_response.planning_result)
             .to_lowercase()
             .replace(' ', "_"),
@@ -475,7 +542,7 @@ async fn execute_ask(
                    omit id when the LLM answer was wrong and no bank row matched."
                 .into(),
         },
-    }))
+    }
 }
 
 async fn correct_question_handler(
