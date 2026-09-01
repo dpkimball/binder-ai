@@ -1,10 +1,16 @@
 //! Facts from bindb. Not reasoning and not repository traversal.
 
 mod codeintel;
+mod domain;
 mod memory;
+mod record_ref;
 
 pub use codeintel::{CodeintelCli, CodeintelKnowledge, ProcessCodeintelCli};
+pub use domain::{parse_scoped_ask, DomainError, KnowledgeDomain, KnowledgeScope, ScopedAskBody};
 pub use memory::MemoryKnowledge;
+pub use record_ref::{
+    decode_record_ref, encode_record_ref, engineering_question_uri, RecordRefError,
+};
 
 use std::path::PathBuf;
 
