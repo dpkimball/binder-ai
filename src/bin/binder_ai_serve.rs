@@ -12,7 +12,7 @@ use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use binder_ai::{
     assess_ask_context, build_ask_prompt, build_explain_prompt, filter_guidance_for_repo,
-    filter_linked_docs_for_repo, filter_paths_for_repo, lang_hint, parse_scoped_ask, plan,
+    filter_linked_docs_strict_for_repo, filter_paths_for_repo, lang_hint, parse_scoped_ask, plan,
     resolve_correction_id, safe_truncate, AiClient, AiClientBuilder, AiRequest, CodeintelKnowledge,
     DomainError, IntelError, PlanRequest, PlanResponse, ProcessCodeintelCli, ScopedAskBody,
     TaskKind,
@@ -398,7 +398,7 @@ async fn execute_ask(
     let plan_response = plan_or_bad_gateway(&state.knowledge, &plan_request)?;
 
     let repo_guidance = filter_guidance_for_repo(&plan_response.guidance, &repo);
-    let repo_docs = filter_linked_docs_for_repo(&plan_response.linked_docs, &repo);
+    let repo_docs = filter_linked_docs_strict_for_repo(&plan_response.linked_docs, &repo);
 
     let workspace = request
         .workspace
