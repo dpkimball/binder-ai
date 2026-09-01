@@ -1,7 +1,7 @@
 //! Repo-scoped `/ask` prompt building and context gates (testable without HTTP/LLM).
 
 use super::{PlanResponse, PlanningResult};
-use crate::knowledge::{GuidanceSummary, LinkedDocSummary};
+use crate::knowledge::{GuidanceSummary, LinkedDocSummary, LinkedIssueSummary};
 
 /// Why `/ask` refused to call the LLM.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,12 +66,36 @@ pub fn filter_paths_for_repo(paths: &[String], repo: &str) -> Vec<String> {
 
 /// Prefer docs indexed for the requested repo.
 pub fn filter_linked_docs_for_repo(docs: &[LinkedDocSummary], repo: &str) -> Vec<LinkedDocSummary> {
+    filter_linked_docs_for_repo_impl(docs, repo, false)
+}
+
+/// Repo docs only — no fallback to other repos (used by `/ask`).
+pub fn filter_linked_docs_strict_for_repo(
+    docs: &[LinkedDocSummary],
+    repo: &str,
+) -> Vec<LinkedDocSummary> {
+    filter_linked_docs_for_repo_impl(docs, repo, true)
+}
+
+fn filter_linked_docs_for_repo_impl(
+    docs: &[LinkedDocSummary],
+    repo: &str,
+    strict: bool,
+) -> Vec<LinkedDocSummary> {
     let scoped: Vec<_> = docs.iter().filter(|d| d.repo == repo).cloned().collect();
-    if scoped.is_empty() {
+    if scoped.is_empty() && !strict {
         docs.to_vec()
     } else {
         scoped
     }
+}
+
+/// Issues for the requested repo only (`/ask` must not pull Foreman issues into repo-dashboard).
+pub fn filter_linked_issues_for_repo(
+    issues: &[LinkedIssueSummary],
+    repo: &str,
+) -> Vec<LinkedIssueSummary> {
+    issues.iter().filter(|i| i.repo == repo).cloned().collect()
 }
 
 /// Repo-specific guidance first, then cross-repo (`X*`).
@@ -142,11 +166,17 @@ pub fn build_ask_prompt(
          Rules:\n\
          - Scope your answer to **{repo}** only; do not describe other repositories unless \
            cross-repo guidance explicitly requires it.\n\
+         - Write **2–5 sentences** stating engineering **constraints** directly (question-bank \
+           style). Not a summary essay.\n\
+         - Do not hedge (forbidden: \"it seems\", \"based on the provided\", \"appears to\", \
+           \"might be worth\").\n\
+         - Use only source excerpts whose paths start with `{repo}/`. Ignore all other paths.\n\
          - Pre-authored question-bank answers marked authoritative below override inference \
            from source excerpts when they conflict.\n\
          - Do not invent type names, field names, or API shapes not shown in the excerpts or \
            authoritative answers.\n\
-         - Cite specific file paths and doc titles when you use source excerpts.\n"
+         - If `{repo}/` excerpts and guidance do not support a confident answer, reply exactly: \
+           `Insufficient indexed context for {repo} to answer this.`\n"
     );
 
     if !guidance.is_empty() {
@@ -176,8 +206,7 @@ pub fn build_ask_prompt(
         prompt.push_str(&file_sections.join("\n\n"));
     }
 
-    let issues: Vec<String> = plan
-        .linked_issues
+    let issues: Vec<String> = filter_linked_issues_for_repo(&plan.linked_issues, repo)
         .iter()
         .filter(|i| !i.body_excerpt.is_empty())
         .take(3)
@@ -188,7 +217,7 @@ pub fn build_ask_prompt(
         prompt.push_str(&issues.join("\n\n"));
     }
 
-    let docs = filter_linked_docs_for_repo(&plan.linked_docs, repo);
+    let docs = filter_linked_docs_strict_for_repo(&plan.linked_docs, repo);
     let doc_lines: Vec<String> = docs
         .iter()
         .take(5)
@@ -282,6 +311,8 @@ pub fn safe_truncate(s: &str, max_bytes: usize) -> &str {
 mod tests {
     use super::*;
     use crate::intel::PlanningMetrics;
+    use crate::knowledge::LinkedDocSummary;
+    use crate::knowledge::LinkedIssueSummary;
 
     fn sample_plan(
         planning_result: PlanningResult,
@@ -440,7 +471,43 @@ mod tests {
         assert!(prompt.contains("Authoritative answers"));
         assert!(prompt.contains("codeintel writes a Git-synced semantic graph"));
         assert!(prompt.contains("Scope your answer to **codeintel**"));
-        assert!(prompt.contains("Do not invent type names"));
+        assert!(prompt.contains("Do not hedge"));
+        assert!(prompt.contains("Insufficient indexed context for codeintel"));
+    }
+
+    #[test]
+    fn strict_docs_do_not_fallback_to_other_repos() {
+        let docs = vec![LinkedDocSummary {
+            path: "codev/plans/foo.md".into(),
+            title: "plan".into(),
+            repo: "foreman".into(),
+            kind: "doc".into(),
+        }];
+        assert!(filter_linked_docs_strict_for_repo(&docs, "repo-dashboard").is_empty());
+        assert_eq!(filter_linked_docs_for_repo(&docs, "repo-dashboard"), docs);
+    }
+
+    #[test]
+    fn filter_issues_for_repo_excludes_other_repos() {
+        let issues = vec![
+            LinkedIssueSummary {
+                number: 1,
+                title: "foreman".into(),
+                url: String::new(),
+                repo: "foreman".into(),
+                body_excerpt: "body".into(),
+            },
+            LinkedIssueSummary {
+                number: 2,
+                title: "dashboard".into(),
+                url: String::new(),
+                repo: "repo-dashboard".into(),
+                body_excerpt: "body".into(),
+            },
+        ];
+        let scoped = filter_linked_issues_for_repo(&issues, "repo-dashboard");
+        assert_eq!(scoped.len(), 1);
+        assert_eq!(scoped[0].number, 2);
     }
 
     #[test]
