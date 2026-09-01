@@ -50,6 +50,7 @@ pub fn guidance_id_prefix(repo: &str) -> Option<&'static str> {
         "bindb" => Some("B"),
         "foreman" => Some("F"),
         "binder-llm" => Some("L"),
+        "repo-dashboard" => Some("R"),
         _ => None,
     }
 }
@@ -451,6 +452,42 @@ mod tests {
         );
         let plan = sample_plan(PlanningResult::Unresolved, guidance.clone());
         assert!(assess_ask_context("foreman", &plan, &[], 0, &guidance).is_ok());
+    }
+
+    #[test]
+    fn filter_guidance_for_repo_dashboard_uses_r_prefix() {
+        let guidance = vec![
+            GuidanceSummary {
+                id: "R1".into(),
+                question: "boundary?".into(),
+                answer: "repo-dashboard scans git; do not add Foreman intake.".into(),
+                version: 1,
+            },
+            GuidanceSummary {
+                id: "C1".into(),
+                question: "codeintel?".into(),
+                answer: "domain layer.".into(),
+                version: 1,
+            },
+        ];
+        let filtered = filter_guidance_for_repo(&guidance, "repo-dashboard");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "R1");
+    }
+
+    #[test]
+    fn assess_allows_repo_dashboard_guidance_only() {
+        let guidance = filter_guidance_for_repo(
+            &[GuidanceSummary {
+                id: "R1".into(),
+                question: "boundary?".into(),
+                answer: "repo-dashboard must not mutate QA.".into(),
+                version: 1,
+            }],
+            "repo-dashboard",
+        );
+        let plan = sample_plan(PlanningResult::Unresolved, guidance.clone());
+        assert!(assess_ask_context("repo-dashboard", &plan, &[], 0, &guidance).is_ok());
     }
 
     #[test]
