@@ -300,6 +300,7 @@ async fn health_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::
                     .get("binder_workspace_sha")
                     .cloned()
                     .unwrap_or(serde_json::Value::Null);
+                body["question_bank_rows_parsed"] = rows_parsed.into();
                 body["question_bank_rows_active"] = rows_active.into();
                 body["question_bank_stale"] =
                     serde_json::Value::Bool(conflicts > 0 || rows_active < rows_parsed);
