@@ -24,6 +24,24 @@ impl AskRejectReason {
     }
 }
 
+/// Stable id for agent corrections when no bank id was returned from `/ask`.
+pub fn correction_id(question: &str) -> String {
+    let mut hash: u64 = 5381;
+    for b in question.trim().to_lowercase().bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(u64::from(b));
+    }
+    format!("COR-{:08x}", hash & 0xffff_ffff)
+}
+
+/// Use explicit bank id from `/ask` guidance when present; else stable hash id.
+pub fn resolve_correction_id(explicit_id: Option<&str>, question: &str) -> String {
+    explicit_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| correction_id(question))
+}
+
 /// Question-bank ID prefix for a codeintel repo name (`C1` → codeintel, `A4` → binder-ai).
 pub fn guidance_id_prefix(repo: &str) -> Option<&'static str> {
     match repo {
@@ -307,6 +325,23 @@ mod tests {
             },
             guidance,
         }
+    }
+
+    #[test]
+    fn correction_id_is_stable_for_same_question() {
+        let a = correction_id("What is the bindb write boundary?");
+        let b = correction_id("What is the bindb write boundary?");
+        assert_eq!(a, b);
+        assert!(a.starts_with("COR-"));
+    }
+
+    #[test]
+    fn resolve_correction_id_prefers_explicit_bank_id() {
+        assert_eq!(
+            resolve_correction_id(Some("C1"), "any question"),
+            "C1"
+        );
+        assert!(resolve_correction_id(None, "What is make b?").starts_with("COR-"));
     }
 
     #[test]

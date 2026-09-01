@@ -8,13 +8,13 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use binder_ai::{
     assess_ask_context, build_ask_prompt, build_explain_prompt, filter_guidance_for_repo,
-    filter_linked_docs_for_repo, filter_paths_for_repo, lang_hint, plan, safe_truncate, AiClient,
-    AiClientBuilder, AiRequest, CodeintelKnowledge, IntelError, PlanRequest, PlanResponse,
-    ProcessCodeintelCli, TaskKind,
+    filter_linked_docs_for_repo, filter_paths_for_repo, lang_hint, plan, resolve_correction_id,
+    safe_truncate, AiClient, AiClientBuilder, AiRequest, CodeintelKnowledge, IntelError,
+    PlanRequest, PlanResponse, ProcessCodeintelCli, TaskKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,6 +52,25 @@ struct StoreQuestionRequest {
     answer: String,
 }
 
+/// Agent correction after `/ask` — upserts by bank id or stable `COR-*` id.
+#[derive(Debug, Deserialize)]
+struct CorrectQuestionRequest {
+    repo: String,
+    question: String,
+    answer: String,
+    /// From `/ask` response `guidance[].id` when correcting a bank row; omit for LLM-only mistakes.
+    #[serde(default)]
+    id: Option<String>,
+}
+
+/// Answer-only update when the agent already knows the bank id.
+#[derive(Debug, Deserialize)]
+struct PatchQuestionRequest {
+    repo: String,
+    id: String,
+    answer: String,
+}
+
 #[derive(Debug, Serialize)]
 struct ExplainResponse {
     explanation: String,
@@ -69,6 +88,15 @@ struct AskResponse {
     linked_issues: Vec<IssueRefOut>,
     inspection_set_size: usize,
     planning_result: String,
+    /// How to persist a corrected answer after discovering `/ask` was wrong.
+    correction: CorrectionHint,
+}
+
+#[derive(Debug, Serialize)]
+struct CorrectionHint {
+    patch_answer: String,
+    correct: String,
+    note: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -99,6 +127,20 @@ struct StoreQuestionResponse {
     id: String,
 }
 
+#[derive(Debug, Serialize)]
+struct CorrectQuestionResponse {
+    updated: bool,
+    repo: String,
+    id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PatchQuestionResponse {
+    updated: bool,
+    repo: String,
+    id: String,
+}
+
 #[tokio::main]
 async fn main() {
     if let Err(err) = run().await {
@@ -113,7 +155,7 @@ async fn run() -> Result<(), String> {
         eprintln!("binder-ai-serve --store DIR [--listen HOST:PORT] [--codeintel BIN]");
         eprintln!("  default listen: 0.0.0.0:7841 (or BINDER_AI_LISTEN)");
         eprintln!("  BINDER_AI_WORKSPACE: default PlanRequest.workspace when JSON omits it");
-        eprintln!("  POST /plan  POST /explain  POST /ask  POST /questions");
+        eprintln!("  POST /plan  POST /explain  POST /ask  POST /questions  POST /questions/correct  PATCH /questions");
         return Ok(());
     }
     let store = flag(&args, "--store")
@@ -144,6 +186,8 @@ async fn run() -> Result<(), String> {
         .route("/explain", post(explain_handler))
         .route("/ask", post(ask_handler))
         .route("/questions", post(questions_handler))
+        .route("/questions/correct", post(correct_question_handler))
+        .route("/questions", patch(patch_question_handler))
         .with_state(Arc::new(AppState {
             store: store_path,
             codeintel_bin,
@@ -307,6 +351,77 @@ async fn ask_handler(
         planning_result: format!("{:?}", plan_response.planning_result)
             .to_lowercase()
             .replace(' ', "_"),
+        correction: CorrectionHint {
+            patch_answer: "PATCH /questions { repo, id, answer }".into(),
+            correct: "POST /questions/correct { repo, question, answer, id? }".into(),
+            note: "Use guidance[].id from this response when correcting a wrong bank answer; \
+                   omit id when the LLM answer was wrong and no bank row matched."
+                .into(),
+        },
+    }))
+}
+
+async fn correct_question_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CorrectQuestionRequest>,
+) -> Result<Json<CorrectQuestionResponse>, (StatusCode, String)> {
+    let repo = body.repo.trim().to_string();
+    let question = body.question.trim().to_string();
+    let answer = body.answer.trim().to_string();
+    if repo.is_empty() || question.is_empty() || answer.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "repo, question, and answer are required".into(),
+        ));
+    }
+    let id = resolve_correction_id(body.id.as_deref(), &question);
+    run_codeintel_put(&state, &repo, &id, &question, &answer).await?;
+    Ok(Json(CorrectQuestionResponse {
+        updated: true,
+        repo,
+        id,
+    }))
+}
+
+async fn patch_question_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<PatchQuestionRequest>,
+) -> Result<Json<PatchQuestionResponse>, (StatusCode, String)> {
+    let repo = body.repo.trim().to_string();
+    let id = body.id.trim().to_string();
+    let answer = body.answer.trim().to_string();
+    if repo.is_empty() || id.is_empty() || answer.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "repo, id, and answer are required".into(),
+        ));
+    }
+    let repo_arg = normalize_repo_arg(&repo);
+    let output = Command::new(&state.codeintel_bin)
+        .args([
+            "patch-question",
+            "--store",
+            &state.store.display().to_string(),
+            "--repo",
+            &repo_arg,
+            "--id",
+            &id,
+            "--answer",
+            &answer,
+        ])
+        .output()
+        .map_err(|err| (StatusCode::BAD_GATEWAY, format!("codeintel spawn failed: {err}")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("codeintel patch-question failed: {stderr}"),
+        ));
+    }
+    Ok(Json(PatchQuestionResponse {
+        updated: true,
+        repo,
+        id,
     }))
 }
 
@@ -324,11 +439,22 @@ async fn questions_handler(
             "repo, id, question, and answer are required".into(),
         ));
     }
-    let repo_arg = if repo == "cross" {
-        "cross".to_string()
-    } else {
-        repo.clone()
-    };
+    run_codeintel_put(&state, &repo, &id, &question, &answer).await?;
+    Ok(Json(StoreQuestionResponse {
+        stored: true,
+        repo,
+        id,
+    }))
+}
+
+async fn run_codeintel_put(
+    state: &AppState,
+    repo: &str,
+    id: &str,
+    question: &str,
+    answer: &str,
+) -> Result<(), (StatusCode, String)> {
+    let repo_arg = normalize_repo_arg(repo);
     let output = Command::new(&state.codeintel_bin)
         .args([
             "put-question",
@@ -337,11 +463,11 @@ async fn questions_handler(
             "--repo",
             &repo_arg,
             "--id",
-            &id,
+            id,
             "--question",
-            &question,
+            question,
             "--answer",
-            &answer,
+            answer,
         ])
         .output()
         .map_err(|err| (StatusCode::BAD_GATEWAY, format!("codeintel spawn failed: {err}")))?;
@@ -352,11 +478,15 @@ async fn questions_handler(
             format!("codeintel put-question failed: {stderr}"),
         ));
     }
-    Ok(Json(StoreQuestionResponse {
-        stored: true,
-        repo,
-        id,
-    }))
+    Ok(())
+}
+
+fn normalize_repo_arg(repo: &str) -> String {
+    if repo == "cross" {
+        "cross".to_string()
+    } else {
+        repo.to_string()
+    }
 }
 
 fn apply_default_workspace(workspace: &mut Option<PathBuf>) {
