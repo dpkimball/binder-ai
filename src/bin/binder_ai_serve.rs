@@ -12,9 +12,10 @@ use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use binder_ai::{
     assess_ask_context, build_ask_prompt, build_explain_prompt, filter_guidance_for_repo,
-    filter_linked_docs_strict_for_repo, filter_paths_for_repo, lang_hint, plan,
+    filter_linked_docs_strict_for_repo, filter_paths_for_repo, lang_hint, parse_scoped_ask, plan,
     resolve_correction_id, safe_truncate, AiClient, AiClientBuilder, AiRequest, CodeintelKnowledge,
-    IntelError, PlanRequest, PlanResponse, ProcessCodeintelCli, TaskKind,
+    DomainError, IntelError, PlanRequest, PlanResponse, ProcessCodeintelCli, ScopedAskBody,
+    TaskKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -249,6 +250,7 @@ async fn run() -> Result<(), String> {
             "/knowledge/engineering/questions/delete",
             post(delete_question_handler),
         )
+        .route("/knowledge/:domain/ask", post(knowledge_scoped_ask_handler))
         .with_state(Arc::new(AppState {
             store: store_path,
             codeintel_bin,
@@ -332,6 +334,53 @@ async fn ask_handler(
     Json(mut request): Json<AskRequest>,
 ) -> Result<Json<AskResponse>, (StatusCode, String)> {
     apply_default_workspace(&mut request.workspace);
+    execute_ask(
+        &state,
+        AskRequest {
+            repo: request.repo,
+            question: request.question,
+            workspace: request.workspace,
+            max_files: request.max_files,
+        },
+    )
+    .await
+}
+
+async fn knowledge_scoped_ask_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(domain): axum::extract::Path<String>,
+    Json(mut body): Json<ScopedAskBody>,
+) -> Result<Json<AskResponse>, (StatusCode, String)> {
+    apply_default_workspace(&mut body.workspace);
+    let (_domain, repo, workspace, max_files) =
+        parse_scoped_ask(&domain, &body).map_err(domain_error_status)?;
+    execute_ask(
+        &state,
+        AskRequest {
+            repo,
+            question: body.question,
+            workspace,
+            max_files,
+        },
+    )
+    .await
+}
+
+fn domain_error_status(err: DomainError) -> (StatusCode, String) {
+    let status = match &err {
+        DomainError::UnknownDomain(_) => StatusCode::NOT_FOUND,
+        DomainError::DomainNotLive { .. } => StatusCode::NOT_IMPLEMENTED,
+        DomainError::InvalidScope { .. } | DomainError::EmptyRepo | DomainError::EmptyQuestion => {
+            StatusCode::BAD_REQUEST
+        }
+    };
+    (status, err.to_string())
+}
+
+async fn execute_ask(
+    state: &AppState,
+    request: AskRequest,
+) -> Result<Json<AskResponse>, (StatusCode, String)> {
     let repo = request.repo.trim().to_string();
     let question = request.question.trim().to_string();
     if repo.is_empty() {

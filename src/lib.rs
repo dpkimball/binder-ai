@@ -47,9 +47,11 @@ pub use intel::{
     PlanningMetrics, PlanningResult, UnresolvedTarget,
 };
 pub use knowledge::{
-    CodeintelCli, CodeintelKnowledge, DoctrineSnapshot, ExecutionRecord, GuidanceSummary,
-    Knowledge, KnowledgeError, KnowledgePlan, LinkedDocSummary, LinkedIssueSummary,
-    LinkedPrSummary, MemoryKnowledge, ProcessCodeintelCli, RecentChange, ReindexStats,
+    decode_record_ref, encode_record_ref, engineering_question_uri, parse_scoped_ask, CodeintelCli,
+    CodeintelKnowledge, DoctrineSnapshot, DomainError, ExecutionRecord, GuidanceSummary, Knowledge,
+    KnowledgeDomain, KnowledgeError, KnowledgePlan, KnowledgeScope, LinkedDocSummary,
+    LinkedIssueSummary, LinkedPrSummary, MemoryKnowledge, ProcessCodeintelCli, RecentChange,
+    RecordRefError, ReindexStats, ScopedAskBody,
 };
 pub use mock::{MockAiClient, MockRouter, ScriptedProvider};
 pub use models::{
