@@ -33,6 +33,7 @@ required-features = ["intel"]
 [dependencies]
 async-trait = "0.1"
 axum = { version = "0.7", optional = true }
+base64 = "0.22"
 binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
