@@ -455,7 +455,7 @@ async fn execute_ask(
 
     let repo_guidance = filter_guidance_for_repo(&plan_response.guidance, &repo);
 
-    if let Some((id, answer, _score)) = select_bank_answer(&repo, &repo_guidance) {
+    if let Some((id, answer, _score)) = select_bank_answer(&repo, &question, &repo_guidance) {
         let winning = repo_guidance
             .iter()
             .find(|g| g.id == id)
