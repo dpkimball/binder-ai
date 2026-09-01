@@ -346,6 +346,15 @@ pub fn plan_from_architecture_json(
                         version: v.get("version").and_then(|v| v.as_u64()).unwrap_or(1),
                         match_score: v.get("match_score").and_then(|v| v.as_u64()).unwrap_or(0)
                             as u32,
+                        aliases: v
+                            .get("aliases")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(str::to_string))
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
                     })
                 })
                 .collect()

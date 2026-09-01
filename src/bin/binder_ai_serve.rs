@@ -13,9 +13,9 @@ use axum::{Json, Router};
 use binder_ai::{
     assess_ask_context, build_ask_prompt, build_explain_prompt, filter_guidance_for_repo,
     filter_linked_docs_strict_for_repo, filter_paths_for_repo, is_repo_known, lang_hint,
-    parse_scoped_ask, plan, resolve_correction_id, safe_truncate, select_bank_answer, AiClient,
-    AiClientBuilder, AiRequest, CodeintelKnowledge, DomainError, IntelError, Knowledge,
-    PlanRequest, PlanResponse, ProcessCodeintelCli, ScopedAskBody, TaskKind,
+    matched_alias, parse_scoped_ask, plan, resolve_correction_id, safe_truncate,
+    select_bank_answer, AiClient, AiClientBuilder, AiRequest, CodeintelKnowledge, DomainError,
+    IntelError, Knowledge, PlanRequest, PlanResponse, ProcessCodeintelCli, ScopedAskBody, TaskKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -78,7 +78,10 @@ struct CorrectQuestionRequest {
 struct PatchQuestionRequest {
     repo: String,
     id: String,
-    answer: String,
+    #[serde(default)]
+    answer: Option<String>,
+    #[serde(default)]
+    aliases: Vec<String>,
     #[serde(default)]
     reason: Option<String>,
     #[serde(default)]
@@ -133,6 +136,8 @@ struct GuidanceOut {
     answer: String,
     version: u64,
     match_score: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    matched_alias: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -270,8 +275,44 @@ async fn run() -> Result<(), String> {
         .map_err(|err| err.to_string())
 }
 
-async fn health_handler() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "ok": true, "service": "binder-ai-serve" }))
+async fn health_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let mut body = serde_json::json!({
+        "ok": true,
+        "service": "binder-ai-serve",
+    });
+    let manifest_path = state.store.join("question-bank-index.json");
+    match std::fs::read_to_string(&manifest_path) {
+        Ok(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
+            Ok(manifest) => {
+                let rows_parsed = manifest
+                    .get("rows_parsed")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let rows_active = manifest
+                    .get("rows_active")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let conflicts = manifest
+                    .get("conflicts")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                body["question_bank_indexed_sha"] = manifest
+                    .get("binder_workspace_sha")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                body["question_bank_rows_active"] = rows_active.into();
+                body["question_bank_stale"] =
+                    serde_json::Value::Bool(conflicts > 0 || rows_active < rows_parsed);
+            }
+            Err(_) => {
+                body["question_bank_stale"] = true.into();
+            }
+        },
+        Err(_) => {
+            body["question_bank_stale"] = true.into();
+        }
+    }
+    Json(body)
 }
 
 async fn plan_handler(
@@ -425,7 +466,7 @@ async fn execute_ask(
             Some(id),
             repo,
             vec![],
-            vec![guidance_out(winning)],
+            vec![guidance_out(winning, &question)],
             vec![],
             vec![],
             plan_response.inspection_set.len(),
@@ -474,7 +515,10 @@ async fn execute_ask(
         None,
         repo,
         files_read,
-        repo_guidance.iter().map(guidance_out).collect(),
+        repo_guidance
+            .iter()
+            .map(|g| guidance_out(g, &question))
+            .collect(),
         repo_docs
             .iter()
             .take(5)
@@ -499,13 +543,14 @@ async fn execute_ask(
     )))
 }
 
-fn guidance_out(g: &binder_ai::GuidanceSummary) -> GuidanceOut {
+fn guidance_out(g: &binder_ai::GuidanceSummary, user_question: &str) -> GuidanceOut {
     GuidanceOut {
         id: g.id.clone(),
         question: g.question.clone(),
         answer: g.answer.clone(),
         version: g.version,
         match_score: g.match_score,
+        matched_alias: matched_alias(user_question, g),
     }
 }
 
@@ -582,18 +627,33 @@ async fn patch_question_handler(
 ) -> Result<Json<PatchQuestionResponse>, (StatusCode, String)> {
     let repo = body.repo.trim().to_string();
     let id = body.id.trim().to_string();
-    let answer = body.answer.trim().to_string();
-    if repo.is_empty() || id.is_empty() || answer.is_empty() {
+    let answer = body
+        .answer
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let aliases: Vec<String> = body
+        .aliases
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if repo.is_empty() || id.is_empty() || (answer.is_none() && aliases.is_empty()) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "repo, id, and answer are required".into(),
+            "repo, id, and at least one of answer or aliases are required".into(),
         ));
     }
     run_codeintel_patch(
         &state,
         &repo,
         &id,
-        &answer,
+        answer,
+        if aliases.is_empty() {
+            None
+        } else {
+            Some(aliases.as_slice())
+        },
         body.reason.as_deref(),
         body.expected_version,
     )
@@ -730,7 +790,8 @@ async fn run_codeintel_patch(
     state: &AppState,
     repo: &str,
     id: &str,
-    answer: &str,
+    answer: Option<&str>,
+    aliases: Option<&[String]>,
     reason: Option<&str>,
     expected_version: Option<u64>,
 ) -> Result<(), (StatusCode, String)> {
@@ -743,9 +804,15 @@ async fn run_codeintel_patch(
         &normalize_repo_arg(repo),
         "--id",
         id,
-        "--answer",
-        answer,
     ]);
+    if let Some(answer) = answer {
+        cmd.args(["--answer", answer]);
+    }
+    if let Some(aliases) = aliases {
+        for alias in aliases {
+            cmd.args(["--aliases", alias]);
+        }
+    }
     append_write_opts(&mut cmd, reason, expected_version);
     map_codeintel_output(cmd.output(), "patch-question")
 }

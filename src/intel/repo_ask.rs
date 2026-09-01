@@ -50,6 +50,35 @@ pub fn select_bank_answer(
         .map(|g| (g.id.clone(), g.answer.clone(), g.match_score))
 }
 
+/// When an alias string matches the user question better than the canonical question, return it.
+pub fn matched_alias(user_question: &str, guidance: &GuidanceSummary) -> Option<String> {
+    let canon_score = token_overlap_count(user_question, &guidance.question);
+    let mut best: Option<(usize, String)> = None;
+    for alias in &guidance.aliases {
+        let score = token_overlap_count(user_question, alias);
+        if score > canon_score && best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
+            best = Some((score, alias.clone()));
+        }
+    }
+    best.map(|(_, alias)| alias)
+}
+
+fn token_overlap_count(left: &str, right: &str) -> usize {
+    let left_tokens: std::collections::BTreeSet<_> = ask_tokens(left).into_iter().collect();
+    ask_tokens(right)
+        .into_iter()
+        .filter(|t| left_tokens.contains(t))
+        .count()
+}
+
+fn ask_tokens(s: &str) -> Vec<String> {
+    s.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| t.len() >= 4)
+        .map(str::to_string)
+        .collect()
+}
+
 /// Stable id for agent corrections when no bank id was returned from `/ask`.
 pub fn correction_id(question: &str) -> String {
     let mut hash: u64 = 5381;
@@ -432,6 +461,7 @@ mod tests {
                 answer: "Neither calls a model for plan().".into(),
                 version: 1,
                 match_score: 0,
+                aliases: vec![],
             },
             GuidanceSummary {
                 id: "C1".into(),
@@ -439,6 +469,7 @@ mod tests {
                 answer: "codeintel writes bindb.".into(),
                 version: 1,
                 match_score: 3,
+                aliases: vec![],
             },
             GuidanceSummary {
                 id: "X1".into(),
@@ -446,6 +477,7 @@ mod tests {
                 answer: "Specify Plan Implement Deploy Evaluate Retro.".into(),
                 version: 1,
                 match_score: 0,
+                aliases: vec![],
             },
         ];
         let filtered = filter_guidance_for_repo(&guidance, "codeintel");
@@ -463,6 +495,7 @@ mod tests {
                 answer: "mock only".into(),
                 version: 1,
                 match_score: 0,
+                aliases: vec![],
             }],
             "foreman",
         );
@@ -481,6 +514,7 @@ mod tests {
                 answer: "mock only".into(),
                 version: 1,
                 match_score: 0,
+                aliases: vec![],
             }],
         );
         let err = assess_ask_context("foreman", &plan, &[], 0, &[]).unwrap_err();
@@ -496,6 +530,7 @@ mod tests {
                 answer: "Build and deploy to dev.".into(),
                 version: 1,
                 match_score: 0,
+                aliases: vec![],
             }],
             "foreman",
         );
@@ -512,6 +547,7 @@ mod tests {
                 answer: "repo-dashboard scans git; do not add Foreman intake.".into(),
                 version: 1,
                 match_score: 0,
+                aliases: vec![],
             },
             GuidanceSummary {
                 id: "C1".into(),
@@ -519,6 +555,7 @@ mod tests {
                 answer: "domain layer.".into(),
                 version: 1,
                 match_score: 0,
+                aliases: vec![],
             },
         ];
         let filtered = filter_guidance_for_repo(&guidance, "repo-dashboard");
@@ -535,6 +572,7 @@ mod tests {
                 answer: "repo-dashboard must not mutate QA.".into(),
                 version: 1,
                 match_score: 0,
+                aliases: vec![],
             }],
             "repo-dashboard",
         );
@@ -550,6 +588,7 @@ mod tests {
             answer: "codeintel writes a Git-synced semantic graph into bindb.".into(),
             version: 1,
             match_score: 0,
+            aliases: vec![],
         }];
         let prompt = build_ask_prompt(
             "codeintel",
@@ -602,6 +641,23 @@ mod tests {
     }
 
     #[test]
+    fn matched_alias_prefers_better_phrasing() {
+        let g = GuidanceSummary {
+            id: "C7".into(),
+            question: "When PlanReport changes?".into(),
+            answer: "propagate".into(),
+            version: 1,
+            match_score: 2,
+            aliases: vec!["what must change when PlanReport gets a new field".into()],
+        };
+        let alias = matched_alias("what must change when PlanReport gets a new field", &g);
+        assert_eq!(
+            alias.as_deref(),
+            Some("what must change when PlanReport gets a new field")
+        );
+    }
+
+    #[test]
     fn golden_binder_ai_plan_no_llm_in_guidance_prompt() {
         let guidance = vec![GuidanceSummary {
             id: "A4".into(),
@@ -609,6 +665,7 @@ mod tests {
             answer: "Neither calls a model for plan(). binder-ai-serve exposes POST /plan and POST /explain.".into(),
             version: 1,
             match_score: 0,
+            aliases: vec![],
         }];
         let prompt = build_ask_prompt(
             "binder-ai",
@@ -630,6 +687,7 @@ mod tests {
             answer: "bank text".into(),
             version: 1,
             match_score: 1,
+            aliases: vec![],
         }];
         assert!(select_bank_answer("codeintel", &guidance).is_none());
         let guidance = vec![GuidanceSummary {
@@ -638,6 +696,7 @@ mod tests {
             answer: "bank text".into(),
             version: 1,
             match_score: 2,
+            aliases: vec![],
         }];
         let hit = select_bank_answer("codeintel", &guidance).unwrap();
         assert_eq!(hit.0, "C1");
@@ -654,6 +713,7 @@ mod tests {
                 answer: "domain".into(),
                 version: 1,
                 match_score: 3,
+                aliases: vec![],
             },
             GuidanceSummary {
                 id: "X3".into(),
@@ -661,6 +721,7 @@ mod tests {
                 answer: "cross".into(),
                 version: 1,
                 match_score: 2,
+                aliases: vec![],
             },
         ];
         let filtered = filter_guidance_for_repo(&guidance, "keepsake");
