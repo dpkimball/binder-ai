@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use super::{
     DoctrineSnapshot, ExecutionRecord, FileRoleSummary, GuidanceSummary, Knowledge, KnowledgeError,
@@ -56,6 +57,7 @@ pub struct CodeintelKnowledge<C> {
     binds: Mutex<Vec<(String, PathBuf)>>,
     cli: C,
     history: Mutex<Vec<ExecutionRecord>>,
+    indexed_repos_cache: Mutex<Option<(Instant, Vec<String>)>>,
 }
 
 impl CodeintelKnowledge<ProcessCodeintelCli> {
@@ -71,6 +73,7 @@ impl<C: CodeintelCli> CodeintelKnowledge<C> {
             binds: Mutex::new(binds),
             cli,
             history: Mutex::new(Vec::new()),
+            indexed_repos_cache: Mutex::new(None),
         }
     }
 
@@ -170,6 +173,29 @@ impl<C: CodeintelCli> Knowledge for CodeintelKnowledge<C> {
     ) -> std::result::Result<(), KnowledgeError> {
         *self.binds.lock().expect("codeintel knowledge mutex") = binds;
         Ok(())
+    }
+
+    fn indexed_repos(&self) -> std::result::Result<Vec<String>, KnowledgeError> {
+        const TTL: Duration = Duration::from_secs(3600);
+        let mut cache = self
+            .indexed_repos_cache
+            .lock()
+            .expect("codeintel knowledge mutex");
+        if let Some((at, repos)) = cache.as_ref() {
+            if at.elapsed() < TTL {
+                return Ok(repos.clone());
+            }
+        }
+        let store = self.store.display().to_string();
+        let stdout = self.cli.run(&[
+            "architecture".into(),
+            "--store".into(),
+            store,
+            "summary".into(),
+        ])?;
+        let repos = indexed_repos_from_summary_json(&stdout)?;
+        *cache = Some((Instant::now(), repos.clone()));
+        Ok(repos)
     }
 }
 
@@ -318,6 +344,8 @@ pub fn plan_from_architecture_json(
                         question: v.get("question")?.as_str()?.to_string(),
                         answer: v.get("answer")?.as_str()?.to_string(),
                         version: v.get("version").and_then(|v| v.as_u64()).unwrap_or(1),
+                        match_score: v.get("match_score").and_then(|v| v.as_u64()).unwrap_or(0)
+                            as u32,
                     })
                 })
                 .collect()
@@ -400,6 +428,22 @@ fn string_list(value: &serde_json::Value, key: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub fn indexed_repos_from_summary_json(
+    stdout: &str,
+) -> std::result::Result<Vec<String>, KnowledgeError> {
+    let value: serde_json::Value = serde_json::from_str(stdout)
+        .map_err(|err| KnowledgeError::new(format!("summary json: {err}")))?;
+    Ok(value
+        .get("repositories")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.get("name")?.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default())
 }
 
 fn persist_execution_jsonl(

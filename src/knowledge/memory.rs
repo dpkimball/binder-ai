@@ -15,6 +15,7 @@ pub struct MemoryKnowledge {
     plan_calls: AtomicU32,
     history: Mutex<Vec<ExecutionRecord>>,
     execution_binds: Mutex<Vec<(String, PathBuf)>>,
+    indexed_repos: Vec<String>,
 }
 
 impl MemoryKnowledge {
@@ -26,7 +27,13 @@ impl MemoryKnowledge {
             plan_calls: AtomicU32::new(0),
             history: Mutex::new(Vec::new()),
             execution_binds: Mutex::new(Vec::new()),
+            indexed_repos: Vec::new(),
         }
+    }
+
+    pub fn with_indexed_repos(mut self, repos: Vec<String>) -> Self {
+        self.indexed_repos = repos;
+        self
     }
 
     pub fn for_files(request: impl Into<String>, files: impl IntoIterator<Item = PathBuf>) -> Self {
@@ -119,5 +126,9 @@ impl Knowledge for MemoryKnowledge {
     ) -> std::result::Result<(), KnowledgeError> {
         *self.execution_binds.lock().expect("memory knowledge mutex") = binds;
         Ok(())
+    }
+
+    fn indexed_repos(&self) -> std::result::Result<Vec<String>, KnowledgeError> {
+        Ok(self.indexed_repos.clone())
     }
 }
