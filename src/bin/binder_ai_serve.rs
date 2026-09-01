@@ -50,6 +50,10 @@ struct StoreQuestionRequest {
     id: String,
     question: String,
     answer: String,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    expected_version: Option<u64>,
 }
 
 /// Agent correction after `/ask` — upserts by bank id or stable `COR-*` id.
@@ -61,6 +65,11 @@ struct CorrectQuestionRequest {
     /// From `/ask` response `guidance[].id` when correcting a bank row; omit for LLM-only mistakes.
     #[serde(default)]
     id: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+    /// Required when updating an existing bank row (see `guidance[].version` from `/ask`).
+    #[serde(default)]
+    expected_version: Option<u64>,
 }
 
 /// Answer-only update when the agent already knows the bank id.
@@ -69,6 +78,20 @@ struct PatchQuestionRequest {
     repo: String,
     id: String,
     answer: String,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    expected_version: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LifecycleQuestionRequest {
+    repo: String,
+    id: String,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    expected_version: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -104,6 +127,15 @@ struct GuidanceOut {
     id: String,
     question: String,
     answer: String,
+    version: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct StaleVersionBody {
+    error: String,
+    repo: String,
+    id: String,
+    current_version: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -156,6 +188,8 @@ async fn run() -> Result<(), String> {
         eprintln!("  default listen: 0.0.0.0:7841 (or BINDER_AI_LISTEN)");
         eprintln!("  BINDER_AI_WORKSPACE: default PlanRequest.workspace when JSON omits it");
         eprintln!("  POST /plan  POST /explain  POST /ask  POST /questions  POST /questions/correct  PATCH /questions");
+        eprintln!("  POST /questions/retire  POST /questions/reactivate  POST /questions/delete");
+        eprintln!("  POST /knowledge/engineering/* — aliases for engineering routes above");
         return Ok(());
     }
     let store = flag(&args, "--store")
@@ -188,6 +222,33 @@ async fn run() -> Result<(), String> {
         .route("/questions", post(questions_handler))
         .route("/questions/correct", post(correct_question_handler))
         .route("/questions", patch(patch_question_handler))
+        .route("/questions/retire", post(retire_question_handler))
+        .route("/questions/reactivate", post(reactivate_question_handler))
+        .route("/questions/delete", post(delete_question_handler))
+        .route("/knowledge/engineering/plan", post(plan_handler))
+        .route("/knowledge/engineering/explain", post(explain_handler))
+        .route("/knowledge/engineering/ask", post(ask_handler))
+        .route("/knowledge/engineering/questions", post(questions_handler))
+        .route(
+            "/knowledge/engineering/questions/correct",
+            post(correct_question_handler),
+        )
+        .route(
+            "/knowledge/engineering/questions",
+            patch(patch_question_handler),
+        )
+        .route(
+            "/knowledge/engineering/questions/retire",
+            post(retire_question_handler),
+        )
+        .route(
+            "/knowledge/engineering/questions/reactivate",
+            post(reactivate_question_handler),
+        )
+        .route(
+            "/knowledge/engineering/questions/delete",
+            post(delete_question_handler),
+        )
         .with_state(Arc::new(AppState {
             store: store_path,
             codeintel_bin,
@@ -332,6 +393,7 @@ async fn ask_handler(
                 id: g.id.clone(),
                 question: g.question.clone(),
                 answer: g.answer.clone(),
+                version: g.version,
             })
             .collect(),
         linked_docs: repo_docs
@@ -381,7 +443,16 @@ async fn correct_question_handler(
         ));
     }
     let id = resolve_correction_id(body.id.as_deref(), &question);
-    run_codeintel_put(&state, &repo, &id, &question, &answer).await?;
+    run_codeintel_put(
+        &state,
+        &repo,
+        &id,
+        &question,
+        &answer,
+        body.reason.as_deref(),
+        body.expected_version,
+    )
+    .await?;
     Ok(Json(CorrectQuestionResponse {
         updated: true,
         repo,
@@ -402,33 +473,15 @@ async fn patch_question_handler(
             "repo, id, and answer are required".into(),
         ));
     }
-    let repo_arg = normalize_repo_arg(&repo);
-    let output = Command::new(&state.codeintel_bin)
-        .args([
-            "patch-question",
-            "--store",
-            &state.store.display().to_string(),
-            "--repo",
-            &repo_arg,
-            "--id",
-            &id,
-            "--answer",
-            &answer,
-        ])
-        .output()
-        .map_err(|err| {
-            (
-                StatusCode::BAD_GATEWAY,
-                format!("codeintel spawn failed: {err}"),
-            )
-        })?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((
-            StatusCode::BAD_GATEWAY,
-            format!("codeintel patch-question failed: {stderr}"),
-        ));
-    }
+    run_codeintel_patch(
+        &state,
+        &repo,
+        &id,
+        &answer,
+        body.reason.as_deref(),
+        body.expected_version,
+    )
+    .await?;
     Ok(Json(PatchQuestionResponse {
         updated: true,
         repo,
@@ -450,12 +503,66 @@ async fn questions_handler(
             "repo, id, question, and answer are required".into(),
         ));
     }
-    run_codeintel_put(&state, &repo, &id, &question, &answer).await?;
+    run_codeintel_put(
+        &state,
+        &repo,
+        &id,
+        &question,
+        &answer,
+        body.reason.as_deref(),
+        body.expected_version,
+    )
+    .await?;
     Ok(Json(StoreQuestionResponse {
         stored: true,
         repo,
         id,
     }))
+}
+
+async fn retire_question_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<LifecycleQuestionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    lifecycle_handler(&state, "retire-question", body).await
+}
+
+async fn reactivate_question_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<LifecycleQuestionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    lifecycle_handler(&state, "reactivate-question", body).await
+}
+
+async fn delete_question_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<LifecycleQuestionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    lifecycle_handler(&state, "delete-question", body).await
+}
+
+async fn lifecycle_handler(
+    state: &AppState,
+    subcommand: &str,
+    body: LifecycleQuestionRequest,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let repo = body.repo.trim().to_string();
+    let id = body.id.trim().to_string();
+    if repo.is_empty() || id.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "repo and id are required".into()));
+    }
+    let stdout = run_codeintel_lifecycle(
+        state,
+        subcommand,
+        &repo,
+        &id,
+        body.reason.as_deref(),
+        body.expected_version,
+    )
+    .await?;
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout).map_err(|err| (StatusCode::BAD_GATEWAY, err.to_string()))?;
+    Ok(Json(value))
 }
 
 async fn run_codeintel_put(
@@ -464,37 +571,131 @@ async fn run_codeintel_put(
     id: &str,
     question: &str,
     answer: &str,
+    reason: Option<&str>,
+    expected_version: Option<u64>,
 ) -> Result<(), (StatusCode, String)> {
-    let repo_arg = normalize_repo_arg(repo);
-    let output = Command::new(&state.codeintel_bin)
-        .args([
-            "put-question",
-            "--store",
-            &state.store.display().to_string(),
-            "--repo",
-            &repo_arg,
-            "--id",
-            id,
-            "--question",
-            question,
-            "--answer",
-            answer,
-        ])
-        .output()
-        .map_err(|err| {
-            (
-                StatusCode::BAD_GATEWAY,
-                format!("codeintel spawn failed: {err}"),
-            )
-        })?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((
+    let mut cmd = Command::new(&state.codeintel_bin);
+    cmd.args([
+        "put-question",
+        "--store",
+        &state.store.display().to_string(),
+        "--repo",
+        &normalize_repo_arg(repo),
+        "--id",
+        id,
+        "--question",
+        question,
+        "--answer",
+        answer,
+    ]);
+    append_write_opts(&mut cmd, reason, expected_version);
+    map_codeintel_output(cmd.output(), "put-question")
+}
+
+async fn run_codeintel_patch(
+    state: &AppState,
+    repo: &str,
+    id: &str,
+    answer: &str,
+    reason: Option<&str>,
+    expected_version: Option<u64>,
+) -> Result<(), (StatusCode, String)> {
+    let mut cmd = Command::new(&state.codeintel_bin);
+    cmd.args([
+        "patch-question",
+        "--store",
+        &state.store.display().to_string(),
+        "--repo",
+        &normalize_repo_arg(repo),
+        "--id",
+        id,
+        "--answer",
+        answer,
+    ]);
+    append_write_opts(&mut cmd, reason, expected_version);
+    map_codeintel_output(cmd.output(), "patch-question")
+}
+
+async fn run_codeintel_lifecycle(
+    state: &AppState,
+    subcommand: &str,
+    repo: &str,
+    id: &str,
+    reason: Option<&str>,
+    expected_version: Option<u64>,
+) -> Result<String, (StatusCode, String)> {
+    let mut cmd = Command::new(&state.codeintel_bin);
+    cmd.args([
+        subcommand,
+        "--store",
+        &state.store.display().to_string(),
+        "--repo",
+        &normalize_repo_arg(repo),
+        "--id",
+        id,
+    ]);
+    append_write_opts(&mut cmd, reason, expected_version);
+    let output = cmd.output().map_err(|err| {
+        (
             StatusCode::BAD_GATEWAY,
-            format!("codeintel put-question failed: {stderr}"),
-        ));
+            format!("codeintel spawn failed: {err}"),
+        )
+    })?;
+    if output.status.code() == Some(2) {
+        return Err(stale_version_error(&output));
+    }
+    if !output.status.success() {
+        return Err(codeintel_failure(subcommand, &output));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn append_write_opts(cmd: &mut Command, reason: Option<&str>, expected_version: Option<u64>) {
+    if let Some(reason) = reason.filter(|s| !s.is_empty()) {
+        cmd.args(["--reason", reason]);
+    }
+    if let Some(version) = expected_version {
+        cmd.args(["--expected-version", &version.to_string()]);
+    }
+}
+
+fn map_codeintel_output(
+    result: std::io::Result<std::process::Output>,
+    subcommand: &str,
+) -> Result<(), (StatusCode, String)> {
+    let output = result.map_err(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("codeintel spawn failed: {err}"),
+        )
+    })?;
+    if output.status.code() == Some(2) {
+        return Err(stale_version_error(&output));
+    }
+    if !output.status.success() {
+        return Err(codeintel_failure(subcommand, &output));
     }
     Ok(())
+}
+
+fn stale_version_error(output: &std::process::Output) -> (StatusCode, String) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if let Ok(body) = serde_json::from_str::<StaleVersionBody>(stderr.trim()) {
+        return (
+            StatusCode::CONFLICT,
+            serde_json::to_string(&body).unwrap_or_else(|_| stderr.to_string()),
+        );
+    }
+    (StatusCode::CONFLICT, stderr.trim().to_string())
+}
+
+fn codeintel_failure(subcommand: &str, output: &std::process::Output) -> (StatusCode, String) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let msg = format!("codeintel {subcommand} failed: {stderr}");
+    if stderr.contains("not found") {
+        return (StatusCode::NOT_FOUND, msg);
+    }
+    (StatusCode::BAD_GATEWAY, msg)
 }
 
 fn normalize_repo_arg(repo: &str) -> String {
