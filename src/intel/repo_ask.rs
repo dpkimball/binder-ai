@@ -37,16 +37,27 @@ pub fn is_repo_known(repo: &str, indexed_repos: &[String]) -> bool {
 }
 
 /// Highest-scoring repo-prefix guidance row meeting the ask threshold, if any.
+/// When `match_score` ties, prefer the row whose canonical question overlaps the
+/// user question most (spec 016 R2 tie-break); then stable id order.
 pub fn select_bank_answer(
     repo: &str,
+    user_question: &str,
     filtered_guidance: &[GuidanceSummary],
 ) -> Option<(String, String, u32)> {
     let prefix = guidance_id_prefix(repo)?;
     filtered_guidance
         .iter()
         .filter(|g| g.id.starts_with(prefix))
-        .max_by_key(|g| g.match_score)
         .filter(|g| g.match_score >= GUIDANCE_ASK_MIN_SCORE)
+        .max_by(|a, b| {
+            a.match_score
+                .cmp(&b.match_score)
+                .then_with(|| {
+                    token_overlap_count(user_question, &a.question)
+                        .cmp(&token_overlap_count(user_question, &b.question))
+                })
+                .then_with(|| a.id.cmp(&b.id))
+        })
         .map(|g| (g.id.clone(), g.answer.clone(), g.match_score))
 }
 
@@ -689,7 +700,7 @@ mod tests {
             match_score: 1,
             aliases: vec![],
         }];
-        assert!(select_bank_answer("codeintel", &guidance).is_none());
+        assert!(select_bank_answer("codeintel", "boundary?", &guidance).is_none());
         let guidance = vec![GuidanceSummary {
             id: "C1".into(),
             question: "boundary?".into(),
@@ -698,10 +709,42 @@ mod tests {
             match_score: 2,
             aliases: vec![],
         }];
-        let hit = select_bank_answer("codeintel", &guidance).unwrap();
+        let hit = select_bank_answer("codeintel", "boundary?", &guidance).unwrap();
         assert_eq!(hit.0, "C1");
         assert_eq!(hit.1, "bank text");
         assert_eq!(hit.2, 2);
+    }
+
+    #[test]
+    fn select_bank_answer_breaks_match_score_ties_by_question_overlap() {
+        let guidance = vec![
+            GuidanceSummary {
+                id: "C17".into(),
+                question: "Can codeintel make network calls or call an LLM? What is the permitted I/O surface?"
+                    .into(),
+                answer: "no network".into(),
+                version: 1,
+                match_score: 3,
+                aliases: vec![],
+            },
+            GuidanceSummary {
+                id: "C1".into(),
+                question: "What is the boundary between codeintel and bindb? What does not belong here?"
+                    .into(),
+                answer: "domain vs storage".into(),
+                version: 1,
+                match_score: 3,
+                aliases: vec![],
+            },
+        ];
+        let hit = select_bank_answer(
+            "codeintel",
+            "What belongs in codeintel vs bindb?",
+            &guidance,
+        )
+        .unwrap();
+        assert_eq!(hit.0, "C1");
+        assert_eq!(hit.1, "domain vs storage");
     }
 
     #[test]
