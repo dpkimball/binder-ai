@@ -355,16 +355,19 @@ mod tests {
                 id: "A4".into(),
                 question: "plan vs serve?".into(),
                 answer: "Neither calls a model for plan().".into(),
+                version: 1,
             },
             GuidanceSummary {
                 id: "C1".into(),
                 question: "boundary?".into(),
                 answer: "codeintel writes bindb.".into(),
+                version: 1,
             },
             GuidanceSummary {
                 id: "X1".into(),
                 question: "SPIDER?".into(),
                 answer: "Specify Plan Implement Deploy Evaluate Retro.".into(),
+                version: 1,
             },
         ];
         let filtered = filter_guidance_for_repo(&guidance, "codeintel");
@@ -380,6 +383,7 @@ mod tests {
                 id: "X11".into(),
                 question: "tests?".into(),
                 answer: "mock only".into(),
+                version: 1,
             }],
             "foreman",
         );
@@ -396,6 +400,7 @@ mod tests {
                 id: "X11".into(),
                 question: "tests?".into(),
                 answer: "mock only".into(),
+                version: 1,
             }],
         );
         let err = assess_ask_context("foreman", &plan, &[], 0, &[]).unwrap_err();
@@ -409,6 +414,7 @@ mod tests {
                 id: "F9".into(),
                 question: "make b?".into(),
                 answer: "Build and deploy to dev.".into(),
+                version: 1,
             }],
             "foreman",
         );
@@ -422,6 +428,7 @@ mod tests {
             id: "C1".into(),
             question: "What is the boundary?".into(),
             answer: "codeintel writes a Git-synced semantic graph into bindb.".into(),
+            version: 1,
         }];
         let prompt = build_ask_prompt(
             "codeintel",
@@ -442,6 +449,7 @@ mod tests {
             id: "A4".into(),
             question: "Difference between binder-ai-plan and binder-ai-serve?".into(),
             answer: "Neither calls a model for plan(). binder-ai-serve exposes POST /plan and POST /explain.".into(),
+            version: 1,
         }];
         let prompt = build_ask_prompt(
             "binder-ai",

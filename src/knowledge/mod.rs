@@ -146,6 +146,8 @@ pub struct GuidanceSummary {
     pub id: String,
     pub question: String,
     pub answer: String,
+    #[serde(default)]
+    pub version: u64,
 }
 
 /// Graph-derived inspection plan. Paths are payload strings from bindb, not file reads.

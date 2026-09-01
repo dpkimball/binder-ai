@@ -317,6 +317,7 @@ pub fn plan_from_architecture_json(
                         id: v.get("id")?.as_str()?.to_string(),
                         question: v.get("question")?.as_str()?.to_string(),
                         answer: v.get("answer")?.as_str()?.to_string(),
+                        version: v.get("version").and_then(|v| v.as_u64()).unwrap_or(1),
                     })
                 })
                 .collect()

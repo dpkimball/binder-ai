@@ -10,6 +10,8 @@ Do **not** add HTTP clients, provider SDKs, auth, or provider JSON mapping. Thos
 
 Do **not** walk the repository to discover architecture when bindb can answer. Query [`Knowledge`] first via [`plan`]. Repository search is allowed only when that plan sets `fallback_required`.
 
+**Knowledge lifecycle (S1b):** After `POST /ask`, persist corrections via `/questions`, `/questions/correct`, `/questions/retire`, etc. Always pass `expected_version` from `guidance[].version` when updating an existing row. See `.cursor/rules/knowledge-lifecycle-writeback.mdc` in the workspace root.
+
 The `binder-ai-plan` binary is the one-shot Cursor client: bindb inspect set on stdout, no HTTP, no model. `binder-ai-serve` (`--features intel`) is the HTTP adapter (`POST /plan`). Neither calls a model or modifies repositories. IDEs must not talk to bindb’s store. Cursor agents in the parent workspace must run `scripts/binder-plan` before Grep/Glob. `hygiene_apply` remains the Cursor skill / dashboard apply adapter. Live Ollama uses `OLLAMA_HOST` (QA Argo `ollama-service` or dev `dev-proxies-ollama`).
 
 Do **not** create a `binder-runtime` crate. Keep `Runtime` here until multiple applications need it independently.
