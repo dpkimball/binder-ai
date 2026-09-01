@@ -12,7 +12,7 @@ readme = "README.md"
 publish = ["dpk"]
 
 [features]
-default = ["all-providers"]
+default = ["all-providers", "intel"]
 ollama = ["binder-llm/ollama"]
 openai = ["binder-llm/openai"]
 anthropic = ["binder-llm/anthropic"]
