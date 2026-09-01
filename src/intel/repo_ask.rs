@@ -51,6 +51,9 @@ pub fn guidance_id_prefix(repo: &str) -> Option<&'static str> {
         "foreman" => Some("F"),
         "binder-llm" => Some("L"),
         "repo-dashboard" => Some("R"),
+        "dpk-build" => Some("DB"),
+        "dpk-ci" => Some("DC"),
+        "dpk-infra" => Some("DI"),
         _ => None,
     }
 }
