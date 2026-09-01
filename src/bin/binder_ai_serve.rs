@@ -538,6 +538,23 @@ async fn patch_question_handler(
     }))
 }
 
+fn cross_repo_question_id(id: &str) -> bool {
+    id.starts_with('X')
+}
+
+fn validate_question_repo_id(repo: &str, id: &str) -> Result<(), (StatusCode, String)> {
+    if id.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "id is required".into()));
+    }
+    if repo.is_empty() && !cross_repo_question_id(id) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "repo is required (omit only for cross-repo X* ids)".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn questions_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<StoreQuestionRequest>,
@@ -546,10 +563,11 @@ async fn questions_handler(
     let id = body.id.trim().to_string();
     let question = body.question.trim().to_string();
     let answer = body.answer.trim().to_string();
-    if repo.is_empty() || id.is_empty() || question.is_empty() || answer.is_empty() {
+    validate_question_repo_id(&repo, &id)?;
+    if question.is_empty() || answer.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            "repo, id, question, and answer are required".into(),
+            "question and answer are required".into(),
         ));
     }
     run_codeintel_put(
