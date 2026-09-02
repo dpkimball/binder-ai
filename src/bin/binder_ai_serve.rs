@@ -215,6 +215,14 @@ async fn run() -> Result<(), String> {
         .parse()
         .map_err(|err| format!("listen {listen}: {err}"))?;
 
+    match binder_ai::install_bank_prefixes_from_env() {
+        Ok(Some(path)) => eprintln!("bank prefixes loaded from {}", path.display()),
+        Ok(None) => eprintln!(
+            "bank prefixes: empty (set BINDER_WORKSPACE_PROFILE or $BINDER_AI_WORKSPACE/binder-profile.toml)"
+        ),
+        Err(err) => return Err(err),
+    }
+
     let store_path = PathBuf::from(&store);
     let codeintel_bin = PathBuf::from(&codeintel);
     let knowledge = CodeintelKnowledge::new(

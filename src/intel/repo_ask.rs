@@ -47,7 +47,7 @@ pub fn select_bank_answer(
     let prefix = guidance_id_prefix(repo)?;
     filtered_guidance
         .iter()
-        .filter(|g| g.id.starts_with(prefix))
+        .filter(|g| g.id.starts_with(prefix.as_str()))
         .filter(|g| g.match_score >= GUIDANCE_ASK_MIN_SCORE)
         .max_by(|a, b| {
             a.match_score
@@ -108,21 +108,7 @@ pub fn resolve_correction_id(explicit_id: Option<&str>, question: &str) -> Strin
         .unwrap_or_else(|| correction_id(question))
 }
 
-/// Question-bank ID prefix for a codeintel repo name (`C1` → codeintel, `A4` → binder-ai).
-pub fn guidance_id_prefix(repo: &str) -> Option<&'static str> {
-    match repo {
-        "codeintel" => Some("C"),
-        "binder-ai" => Some("A"),
-        "bindb" => Some("B"),
-        "foreman" => Some("F"),
-        "binder-llm" => Some("L"),
-        "repo-dashboard" => Some("R"),
-        "dpk-build" => Some("DB"),
-        "dpk-ci" => Some("DC"),
-        "dpk-infra" => Some("DI"),
-        _ => None,
-    }
-}
+use super::bank_profile::guidance_id_prefix;
 
 /// Keep paths under `{repo}/`. Never fall back to other repos (avoids wrong LLM context).
 pub fn filter_paths_for_repo(paths: &[String], repo: &str) -> Vec<String> {
@@ -179,7 +165,7 @@ pub fn filter_guidance_for_repo(guidance: &[GuidanceSummary], repo: &str) -> Vec
     };
     let mut repo_specific: Vec<_> = guidance
         .iter()
-        .filter(|g| g.id.starts_with(prefix))
+        .filter(|g| g.id.starts_with(prefix.as_str()))
         .cloned()
         .collect();
     let mut cross: Vec<_> = guidance
@@ -213,9 +199,9 @@ pub fn assess_ask_context(
     }
 
     if plan.planning_result == PlanningResult::Unresolved {
-        let has_repo_specific = repo_guidance
-            .iter()
-            .any(|g| guidance_id_prefix(repo).is_some_and(|prefix| g.id.starts_with(prefix)));
+        let has_repo_specific = repo_guidance.iter().any(|g| {
+            guidance_id_prefix(repo).is_some_and(|prefix| g.id.starts_with(prefix.as_str()))
+        });
         if !has_repo_specific && !has_repo_files && !has_repo_docs {
             return Err(AskRejectReason::UnresolvedWithoutRepoContext);
         }
@@ -394,9 +380,20 @@ pub fn safe_truncate(s: &str, max_bytes: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intel::bank_profile::{
+        dpk_bank_prefixes_fixture, install_bank_prefix_registry, BankPrefixRegistry,
+    };
     use crate::intel::PlanningMetrics;
     use crate::knowledge::LinkedDocSummary;
     use crate::knowledge::LinkedIssueSummary;
+    use std::sync::Once;
+
+    fn install_dpk_prefixes() {
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            install_bank_prefix_registry(BankPrefixRegistry::from_map(dpk_bank_prefixes_fixture()));
+        });
+    }
 
     fn sample_plan(
         planning_result: PlanningResult,
@@ -441,6 +438,7 @@ mod tests {
 
     #[test]
     fn correction_id_is_stable_for_same_question() {
+        install_dpk_prefixes();
         let a = correction_id("What is the bindb write boundary?");
         let b = correction_id("What is the bindb write boundary?");
         assert_eq!(a, b);
@@ -449,12 +447,14 @@ mod tests {
 
     #[test]
     fn resolve_correction_id_prefers_explicit_bank_id() {
+        install_dpk_prefixes();
         assert_eq!(resolve_correction_id(Some("C1"), "any question"), "C1");
         assert!(resolve_correction_id(None, "What is make b?").starts_with("COR-"));
     }
 
     #[test]
     fn filter_paths_for_repo_excludes_other_repos() {
+        install_dpk_prefixes();
         let paths = vec![
             "apple-health-binder/README.md".into(),
             "codeintel/src/architecture.rs".into(),
@@ -466,6 +466,7 @@ mod tests {
 
     #[test]
     fn filter_guidance_prefers_repo_prefix() {
+        install_dpk_prefixes();
         let guidance = vec![
             GuidanceSummary {
                 id: "A4".into(),
@@ -500,6 +501,7 @@ mod tests {
 
     #[test]
     fn assess_rejects_cross_only_guidance_when_unresolved() {
+        install_dpk_prefixes();
         let guidance = filter_guidance_for_repo(
             &[GuidanceSummary {
                 id: "X11".into(),
@@ -518,6 +520,7 @@ mod tests {
 
     #[test]
     fn assess_rejects_unresolved_without_repo_context() {
+        install_dpk_prefixes();
         let plan = sample_plan(
             PlanningResult::Unresolved,
             vec![GuidanceSummary {
@@ -535,6 +538,7 @@ mod tests {
 
     #[test]
     fn assess_allows_guidance_only_context() {
+        install_dpk_prefixes();
         let guidance = filter_guidance_for_repo(
             &[GuidanceSummary {
                 id: "F9".into(),
@@ -552,6 +556,7 @@ mod tests {
 
     #[test]
     fn filter_guidance_for_repo_dashboard_uses_r_prefix() {
+        install_dpk_prefixes();
         let guidance = vec![
             GuidanceSummary {
                 id: "R1".into(),
@@ -577,6 +582,7 @@ mod tests {
 
     #[test]
     fn assess_allows_repo_dashboard_guidance_only() {
+        install_dpk_prefixes();
         let guidance = filter_guidance_for_repo(
             &[GuidanceSummary {
                 id: "R1".into(),
@@ -594,6 +600,7 @@ mod tests {
 
     #[test]
     fn ask_prompt_marks_guidance_authoritative_and_scopes_repo() {
+        install_dpk_prefixes();
         let guidance = vec![GuidanceSummary {
             id: "C1".into(),
             question: "What is the boundary?".into(),
@@ -619,6 +626,7 @@ mod tests {
 
     #[test]
     fn strict_docs_do_not_fallback_to_other_repos() {
+        install_dpk_prefixes();
         let docs = vec![LinkedDocSummary {
             path: "codev/plans/foo.md".into(),
             title: "plan".into(),
@@ -631,6 +639,7 @@ mod tests {
 
     #[test]
     fn filter_issues_for_repo_excludes_other_repos() {
+        install_dpk_prefixes();
         let issues = vec![
             LinkedIssueSummary {
                 number: 1,
@@ -654,6 +663,7 @@ mod tests {
 
     #[test]
     fn matched_alias_prefers_better_phrasing() {
+        install_dpk_prefixes();
         let g = GuidanceSummary {
             id: "C7".into(),
             question: "When PlanReport changes?".into(),
@@ -671,6 +681,7 @@ mod tests {
 
     #[test]
     fn golden_binder_ai_plan_no_llm_in_guidance_prompt() {
+        install_dpk_prefixes();
         let guidance = vec![GuidanceSummary {
             id: "A4".into(),
             question: "Difference between binder-ai-plan and binder-ai-serve?".into(),
@@ -693,6 +704,7 @@ mod tests {
 
     #[test]
     fn select_bank_answer_requires_min_score() {
+        install_dpk_prefixes();
         let guidance = vec![GuidanceSummary {
             id: "C1".into(),
             question: "boundary?".into(),
@@ -718,6 +730,7 @@ mod tests {
 
     #[test]
     fn select_bank_answer_breaks_match_score_ties_by_question_overlap() {
+        install_dpk_prefixes();
         let guidance = vec![
             GuidanceSummary {
                 id: "C17".into(),
@@ -750,6 +763,7 @@ mod tests {
 
     #[test]
     fn prefix_less_repo_gets_x_guidance_only() {
+        install_dpk_prefixes();
         let guidance = vec![
             GuidanceSummary {
                 id: "C1".into(),
@@ -775,6 +789,7 @@ mod tests {
 
     #[test]
     fn is_repo_known_accepts_prefix_or_indexed() {
+        install_dpk_prefixes();
         assert!(is_repo_known("codeintel", &[]));
         assert!(is_repo_known("keepsake", &["keepsake".into()]));
         assert!(!is_repo_known("keepsake", &[]));
@@ -786,6 +801,7 @@ mod tests {
 
     #[test]
     fn inference_prompt_includes_low_confidence_disclaimer() {
+        install_dpk_prefixes();
         let prompt = build_ask_prompt(
             "codeintel",
             "kafka?",
