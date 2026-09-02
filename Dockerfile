@@ -23,6 +23,7 @@ COPY --from=bindb src ./bindb/src
 COPY --from=bindb benches ./bindb/benches
 COPY --from=codeintel Cargo.toml Cargo.lock README.md ./codeintel/
 COPY --from=codeintel src ./codeintel/src
+COPY --from=codeintel profiles ./codeintel/profiles
 WORKDIR /src/codeintel
 RUN cargo install --locked --path . --root /out
 RUN strip /out/bin/codeintel || true
