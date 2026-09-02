@@ -21,9 +21,12 @@ RUN apt-get update \
 COPY --from=bindb Cargo.toml Cargo.lock README.md ./bindb/
 COPY --from=bindb src ./bindb/src
 COPY --from=bindb benches ./bindb/benches
-COPY --from=codeintel Cargo.toml Cargo.lock README.md ./codeintel/
+COPY --from=codeintel Cargo.toml Cargo.lock README.md build.rs ./codeintel/
 COPY --from=codeintel src ./codeintel/src
+COPY --from=codeintel profiles ./codeintel/profiles
 WORKDIR /src/codeintel
+# build.rs injects CODEINTEL_* via rustc-env; no .git in build context.
+ENV GITHUB_SHA=docker
 RUN cargo install --locked --path . --root /out
 RUN strip /out/bin/codeintel || true
 

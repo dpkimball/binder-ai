@@ -59,31 +59,32 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
-      # Included by cargo-dist via dist-workspace.toml github-build-setup.
-      # Requires repo secrets PRIVATE_CARGO_URL (sparse index URL) and
-      # CARGO_REGISTRIES_DPK_TOKEN (or equivalent Kellnr publish/read token).
-      - name: Configure private Cargo registry (binder-llm)
+      # GitHub-hosted runners cannot reach LAN Kellnr — path-checkout binder-llm.
+      - name: Checkout binder-llm as path dependency
         env:
-          PRIVATE_CARGO_URL: ${{ secrets.PRIVATE_CARGO_URL }}
-          CARGO_REGISTRIES_DPK_TOKEN: ${{ secrets.CARGO_REGISTRIES_DPK_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION || secrets.GH_RELEASES_TOKEN || github.token }}
         run: |
           set -euo pipefail
-          if [ -z "${PRIVATE_CARGO_URL:-}" ]; then
-            echo "PRIVATE_CARGO_URL secret is required for binder-ai release builds (binder-llm on Kellnr)" >&2
-            exit 1
+          DEST="${GITHUB_WORKSPACE}/../binder-llm"
+          if [ ! -f "${DEST}/Cargo.toml" ]; then
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
           fi
-          mkdir -p "${HOME}/.cargo"
-          {
-            echo '[registries.dpk]'
-            echo "index = \"${PRIVATE_CARGO_URL}\""
-            echo 'credential-provider = ["cargo:token"]'
-          } >> "${HOME}/.cargo/config.toml"
-          if [ -n "${CARGO_REGISTRIES_DPK_TOKEN:-}" ]; then
-            mkdir -p "${HOME}/.cargo"
-            printf '[registries.dpk]\ntoken = "Cargo registry token %s"\n' \
-              "${CARGO_REGISTRIES_DPK_TOKEN}" >> "${HOME}/.cargo/credentials.toml"
-            chmod 600 "${HOME}/.cargo/credentials.toml"
-          fi
+          test -f "${DEST}/Cargo.toml"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("Cargo.toml")
+          t = p.read_text()
+          old = 'binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }'
+          new = 'binder-llm = { path = "../binder-llm", default-features = false }'
+          if old not in t:
+              if 'path = "../binder-llm"' in t:
+                  print("binder-llm already path-dependent")
+              else:
+                  raise SystemExit("expected binder-llm registry dep not found in Cargo.toml")
+          else:
+              p.write_text(t.replace(old, new, 1))
+              print("rewrote binder-llm dependency to path ../binder-llm")
+          PY
       - name: Install dist
         # we specify bash to get pipefail; it guards against the `curl` command
         # failing. otherwise `sh` won't catch that `curl` returned non-0
@@ -151,28 +152,32 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           fi
-      - name: "Configure private Cargo registry (binder-llm)"
+      # GitHub-hosted runners cannot reach LAN Kellnr — path-checkout binder-llm.
+      - name: "Checkout binder-llm as path dependency"
+        env:
+          GH_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION || secrets.GH_RELEASES_TOKEN || github.token }}
         run: |
           set -euo pipefail
-          if [ -z "${PRIVATE_CARGO_URL:-}" ]; then
-            echo "PRIVATE_CARGO_URL secret is required for binder-ai release builds (binder-llm on Kellnr)" >&2
-            exit 1
+          DEST="${GITHUB_WORKSPACE}/../binder-llm"
+          if [ ! -f "${DEST}/Cargo.toml" ]; then
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
           fi
-          mkdir -p "${HOME}/.cargo"
-          {
-            echo '[registries.dpk]'
-            echo "index = \"${PRIVATE_CARGO_URL}\""
-            echo 'credential-provider = ["cargo:token"]'
-          } >> "${HOME}/.cargo/config.toml"
-          if [ -n "${CARGO_REGISTRIES_DPK_TOKEN:-}" ]; then
-            mkdir -p "${HOME}/.cargo"
-            printf '[registries.dpk]\ntoken = "Cargo registry token %s"\n' \
-              "${CARGO_REGISTRIES_DPK_TOKEN}" >> "${HOME}/.cargo/credentials.toml"
-            chmod 600 "${HOME}/.cargo/credentials.toml"
-          fi
-        env:
-          "CARGO_REGISTRIES_DPK_TOKEN": "${{ secrets.CARGO_REGISTRIES_DPK_TOKEN }}"
-          "PRIVATE_CARGO_URL": "${{ secrets.PRIVATE_CARGO_URL }}"
+          test -f "${DEST}/Cargo.toml"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("Cargo.toml")
+          t = p.read_text()
+          old = 'binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }'
+          new = 'binder-llm = { path = "../binder-llm", default-features = false }'
+          if old not in t:
+              if 'path = "../binder-llm"' in t:
+                  print("binder-llm already path-dependent")
+              else:
+                  raise SystemExit("expected binder-llm registry dep not found in Cargo.toml")
+          else:
+              p.write_text(t.replace(old, new, 1))
+              print("rewrote binder-llm dependency to path ../binder-llm")
+          PY
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest
@@ -225,6 +230,32 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      # GitHub-hosted runners cannot reach LAN Kellnr — path-checkout binder-llm.
+      - name: Checkout binder-llm as path dependency
+        env:
+          GH_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION || secrets.GH_RELEASES_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          DEST="${GITHUB_WORKSPACE}/../binder-llm"
+          if [ ! -f "${DEST}/Cargo.toml" ]; then
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
+          fi
+          test -f "${DEST}/Cargo.toml"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("Cargo.toml")
+          t = p.read_text()
+          old = 'binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }'
+          new = 'binder-llm = { path = "../binder-llm", default-features = false }'
+          if old not in t:
+              if 'path = "../binder-llm"' in t:
+                  print("binder-llm already path-dependent")
+              else:
+                  raise SystemExit("expected binder-llm registry dep not found in Cargo.toml")
+          else:
+              p.write_text(t.replace(old, new, 1))
+              print("rewrote binder-llm dependency to path ../binder-llm")
+          PY
       - name: Install cached dist
         uses: actions/download-artifact@v8
         with:
@@ -275,6 +306,32 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      # GitHub-hosted runners cannot reach LAN Kellnr — path-checkout binder-llm.
+      - name: Checkout binder-llm as path dependency
+        env:
+          GH_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION || secrets.GH_RELEASES_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          DEST="${GITHUB_WORKSPACE}/../binder-llm"
+          if [ ! -f "${DEST}/Cargo.toml" ]; then
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
+          fi
+          test -f "${DEST}/Cargo.toml"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("Cargo.toml")
+          t = p.read_text()
+          old = 'binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }'
+          new = 'binder-llm = { path = "../binder-llm", default-features = false }'
+          if old not in t:
+              if 'path = "../binder-llm"' in t:
+                  print("binder-llm already path-dependent")
+              else:
+                  raise SystemExit("expected binder-llm registry dep not found in Cargo.toml")
+          else:
+              p.write_text(t.replace(old, new, 1))
+              print("rewrote binder-llm dependency to path ../binder-llm")
+          PY
       - name: Install cached dist
         uses: actions/download-artifact@v8
         with:

@@ -1,0 +1,28 @@
+# Included by cargo-dist via dist-workspace.toml github-build-setup.
+# GitHub-hosted runners cannot reach LAN Kellnr (PRIVATE_CARGO_URL).
+# Clone private binder-llm as a sibling and rewrite the registry dep to path.
+- name: Checkout binder-llm as path dependency
+  env:
+    GH_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION || secrets.GH_RELEASES_TOKEN || github.token }}
+  run: |
+    set -euo pipefail
+    DEST="${GITHUB_WORKSPACE}/../binder-llm"
+    if [ ! -f "${DEST}/Cargo.toml" ]; then
+      git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
+    fi
+    test -f "${DEST}/Cargo.toml"
+    python3 - <<'PY'
+    from pathlib import Path
+    p = Path("Cargo.toml")
+    t = p.read_text()
+    old = 'binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }'
+    new = 'binder-llm = { path = "../binder-llm", default-features = false }'
+    if old not in t:
+        if 'path = "../binder-llm"' in t:
+            print("binder-llm already path-dependent")
+        else:
+            raise SystemExit("expected binder-llm registry dep not found in Cargo.toml")
+    else:
+        p.write_text(t.replace(old, new, 1))
+        print("rewrote binder-llm dependency to path ../binder-llm")
+    PY
