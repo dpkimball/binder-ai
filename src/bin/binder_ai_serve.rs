@@ -194,7 +194,10 @@ async fn main() {
 
 async fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
-    if args.iter().any(|a| a == "-V" || a == "--version" || a == "version") {
+    if args
+        .iter()
+        .any(|a| a == "-V" || a == "--version" || a == "version")
+    {
         println!("binder-ai-serve {}", env!("CARGO_PKG_VERSION"));
         println!("commit: {}", env!("BINDER_AI_GIT_SHA"));
         println!("built: {}", env!("BINDER_AI_BUILD_DATE"));

@@ -42,7 +42,7 @@ RUN apt-get update \
     pkg-config \
   && rm -rf /var/lib/apt/lists/*
 COPY .cargo/config.toml /usr/local/cargo/config.toml
-COPY Cargo.toml Cargo.lock README.md ./
+COPY Cargo.toml Cargo.lock README.md build.rs ./
 COPY src ./src
 RUN cargo install --locked --path . --bin binder-ai-serve --root /out --features intel
 RUN strip /out/bin/binder-ai-serve || true

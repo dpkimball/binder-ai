@@ -10,3 +10,5 @@ github-releases-repo = "dpkimball/binder-ai-releases"
 include = ["packaging/LICENSE.txt", "packaging/README.txt"]
 # Resolve binder-llm from private Kellnr during release builds.
 github-build-setup = "dist-cargo-registry-setup.yml"
+pr-run-mode = "skip"
+source-tarball = false
