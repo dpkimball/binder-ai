@@ -11,7 +11,7 @@ category: architecture
 ```mermaid
 flowchart TD
   apps["Foreman / binder-server / binder-cloud / binder-desktop / binder-cli / Repository Hygiene / IDEs"]
-  intel["binder-ai-plan / POST /plan"]
+  intel["binder-ai-plan / POST /plan / POST /ask"]
   ai["binder-ai AiClient"]
   runtime["binder-ai Runtime"]
   knowledge["binder-ai Knowledge"]
@@ -126,6 +126,48 @@ There are two independent bindb stores with different membership:
 | **QA** | `/data` PVC on `binder-ai-serve` pod | Subset: 41 `dpkimball/` GitHub repos (shallow clone + index) + `repo-dashboard` prefix-indexed from `binder-workspace` umbrella clone. Seed generation controlled by `dpk-infra` chart `seed.generation`. |
 
 `scripts/binder-plan` without `BINDER_AI_PLAN_URL` uses the laptop store. With `BINDER_AI_PLAN_URL=http://192.168.86.47:31784` it queries the QA serve pod. The QA store uses `BINDER_AI_WORKSPACE=/data/workspace` so paths resolve as `<repo>/relative` without laptop SSD mounts. Laptop paths (`/Volumes/SSD/…`) are not valid on the pod.
+
+## Engineering Q&A (`POST /ask`)
+
+`binder-ai-serve` exposes `POST /ask` for repo-scoped questions against the question bank and bindb store. Spec: [`specs/016-question-bank-ask-quality.md`](https://github.com/dpkimball/binder-workspace/blob/master/specs/016-question-bank-ask-quality.md) (binder-workspace).
+
+Handler: `execute_ask` in `src/bin/binder_ai_serve.rs`.
+
+### Question shapes (what happens)
+
+| Asker intent | Example | Path |
+|--------------|---------|------|
+| **Canonical bank question** | `"What belongs in codeintel vs bindb?"` | Token overlap ≥ `GUIDANCE_ASK_MIN_SCORE` (2) on a repo-prefix row → **`bank`**, no LLM |
+| **Similar / paraphrased** | `"where does codeintel stop and bindb start?"` or an **alias** of C7 | Same retrieval: tags + aliases score into `match_score`. If ≥ 2 → **`bank`** (verbatim curated answer). Response may set `matched_alias` when an alias beat the canonical wording |
+| **General code question** | `"How do I configure Kafka streaming?"` (no bank row) | No bank hit → full **`plan()`**, read scoped files/docs, then **LLM** → **`inference`**. Prompt warns: no authoritative bank row |
+| **No bindb foothold** | Known repo but unresolved plan and no files/docs/guidance | **422** — refuse rather than invent |
+| **Unknown repo** | `"nonexistent-repo-xyz"` | **422** before plan |
+
+There is **no** dedicated “find similar questions” API. Similarity is only the bank matcher (token tags + aliases). Weak overlaps (score 1) stay on the **inference** path so a vaguely related bank row is not treated as authoritative.
+
+```mermaid
+flowchart TD
+  A["POST /ask<br/>{ repo, question, workspace?, max_files? }"] --> B{repo and question<br/>non-empty?}
+  B -->|no| B400[400 Bad Request]
+  B -->|yes| C["indexed_repos()<br/>(codeintel architecture summary)"]
+  C --> D{repo known?}
+  D -->|no| D422[422 repo not indexed]
+  D -->|yes| E["Fast path: Knowledge::guidance()<br/>→ codeintel architecture guidance<br/>token tags + aliases"]
+  E --> F["filter_guidance_for_repo()<br/>select_bank_answer()"]
+  F -->|"canonical or paraphrase<br/>match_score ≥ 2"| G["200 answer_source: bank<br/>verbatim curated answer<br/>no LLM, no file reads"]
+  F -->|"general / weak / no hit"| H["Full plan: Knowledge::plan()<br/>→ codeintel architecture plan"]
+  H --> I["select_bank_answer() again<br/>on plan guidance"]
+  I -->|bank hit| G
+  I -->|still no bank| J["Read scoped plan files + linked docs<br/>(workspace, max_files cap)"]
+  J --> K{assess_ask_context<br/>files / docs / guidance?}
+  K -->|insufficient| L422[422 insufficient context]
+  K -->|ok| M["build_ask_prompt()<br/>+ inference disclaimer<br/>→ AiClient / binder-llm"]
+  M --> N["200 answer_source: inference<br/>general code Q&A"]
+```
+
+**Bank short-circuit:** `select_bank_answer` requires a **repo-prefix** row (e.g. `C*` for codeintel) with `match_score ≥ 2`. Cross-repo `X*` never alone yields `answer_source: bank` for prefix-mapped repos. Guidance-first skips `read_plan_files` entirely.
+
+**codeintel subprocess:** `CodeintelKnowledge` shells out to `codeintel architecture --store …` for `guidance`, `plan`, and `summary`. Question-bank rows live in bindb; `index-questions` on QA runs during store-refresh (see dpk-infra `binder-ai-serve` chart).
 
 ## HygieneEngine
 
