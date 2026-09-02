@@ -39,6 +39,11 @@ pub trait Knowledge: Send + Sync {
     }
     /// Repo names present in the bindb store (`architecture summary`).
     fn indexed_repos(&self) -> std::result::Result<Vec<String>, KnowledgeError>;
+    /// Question-bank token overlap only (no full graph plan).
+    fn guidance(&self, request: &str) -> std::result::Result<Vec<GuidanceSummary>, KnowledgeError> {
+        let _ = request;
+        Ok(Vec::new())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

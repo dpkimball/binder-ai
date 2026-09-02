@@ -118,6 +118,19 @@ impl<C: CodeintelCli> Knowledge for CodeintelKnowledge<C> {
         plan_from_architecture_json(&stdout)
     }
 
+    fn guidance(&self, request: &str) -> std::result::Result<Vec<GuidanceSummary>, KnowledgeError> {
+        let store = self.store.display().to_string();
+        let stdout = self.cli.run(&[
+            "architecture".into(),
+            "--store".into(),
+            store,
+            "guidance".into(),
+            "--request".into(),
+            request.into(),
+        ])?;
+        guidance_array_from_json(&stdout)
+    }
+
     fn doctrine(&self) -> std::result::Result<DoctrineSnapshot, KnowledgeError> {
         let store = self.store.display().to_string();
         let stdout = self.cli.run(&[
@@ -197,6 +210,40 @@ impl<C: CodeintelCli> Knowledge for CodeintelKnowledge<C> {
         *cache = Some((Instant::now(), repos.clone()));
         Ok(repos)
     }
+}
+
+fn parse_guidance_item(v: &serde_json::Value) -> Option<GuidanceSummary> {
+    Some(GuidanceSummary {
+        id: v.get("id")?.as_str()?.to_string(),
+        question: v.get("question")?.as_str()?.to_string(),
+        answer: v.get("answer")?.as_str()?.to_string(),
+        version: v.get("version").and_then(|v| v.as_u64()).unwrap_or(1),
+        match_score: v.get("match_score").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+        aliases: v
+            .get("aliases")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    })
+}
+
+fn parse_guidance_array(value: Option<&serde_json::Value>) -> Vec<GuidanceSummary> {
+    value
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(parse_guidance_item).collect())
+        .unwrap_or_default()
+}
+
+pub fn guidance_array_from_json(
+    stdout: &str,
+) -> std::result::Result<Vec<GuidanceSummary>, KnowledgeError> {
+    let value: serde_json::Value = serde_json::from_str(stdout)
+        .map_err(|err| KnowledgeError::new(format!("guidance json: {err}")))?;
+    Ok(parse_guidance_array(Some(&value)))
 }
 
 pub fn plan_from_architecture_json(
@@ -333,33 +380,7 @@ pub fn plan_from_architecture_json(
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
-    let guidance = value
-        .get("guidance")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| {
-                    Some(GuidanceSummary {
-                        id: v.get("id")?.as_str()?.to_string(),
-                        question: v.get("question")?.as_str()?.to_string(),
-                        answer: v.get("answer")?.as_str()?.to_string(),
-                        version: v.get("version").and_then(|v| v.as_u64()).unwrap_or(1),
-                        match_score: v.get("match_score").and_then(|v| v.as_u64()).unwrap_or(0)
-                            as u32,
-                        aliases: v
-                            .get("aliases")
-                            .and_then(|v| v.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|v| v.as_str().map(str::to_string))
-                                    .collect()
-                            })
-                            .unwrap_or_default(),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let guidance = parse_guidance_array(value.get("guidance"));
     Ok(KnowledgePlan {
         request: value
             .get("request")

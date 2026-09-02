@@ -96,6 +96,13 @@ impl Knowledge for MemoryKnowledge {
         Ok(self.plan.clone())
     }
 
+    fn guidance(
+        &self,
+        _request: &str,
+    ) -> std::result::Result<Vec<super::GuidanceSummary>, KnowledgeError> {
+        Ok(self.plan.guidance.clone())
+    }
+
     fn doctrine(&self) -> std::result::Result<DoctrineSnapshot, KnowledgeError> {
         Ok(self.doctrine.clone())
     }
