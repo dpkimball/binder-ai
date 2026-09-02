@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::knowledge::{
     FileRoleSummary, GuidanceSummary, Knowledge, KnowledgeError, LinkedDocSummary,
-    LinkedIssueSummary, LinkedPrSummary, RecentChange, TouchPointSummary,
+    LinkedIssueSummary, LinkedPrSummary, LinkedSkillSummary, RecentChange, TouchPointSummary,
 };
 use crate::workspace::{resolve_inspection_set_best_effort, WorkspaceLayout};
 
@@ -94,6 +94,9 @@ pub struct PlanResponse {
     pub linked_prs: Vec<LinkedPrSummary>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub linked_docs: Vec<LinkedDocSummary>,
+    /// Cursor/Claude skills matching the query.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_skills: Vec<LinkedSkillSummary>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub origin_issues: Vec<u64>,
     pub matched_kind: String,
@@ -222,6 +225,7 @@ pub fn plan<K: Knowledge>(
         linked_issues: knowledge_plan.linked_issues,
         linked_prs: knowledge_plan.linked_prs,
         linked_docs: knowledge_plan.linked_docs,
+        linked_skills: knowledge_plan.linked_skills,
         origin_issues: knowledge_plan.origin_issues,
         matched_kind: knowledge_plan.matched_kind,
         file_roles: knowledge_plan.file_roles,
@@ -306,6 +310,7 @@ impl PlanResponse {
             recent_changes: self.recent_changes.clone(),
             linked_prs: self.linked_prs.clone(),
             linked_docs: self.linked_docs.clone(),
+            linked_skills: self.linked_skills.clone(),
             origin_issues: self.origin_issues.clone(),
             matched_kind: self.matched_kind.clone(),
             file_roles: self.file_roles.clone(),
@@ -350,6 +355,8 @@ pub struct AgentPlan {
     pub linked_prs: Vec<LinkedPrSummary>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub linked_docs: Vec<LinkedDocSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_skills: Vec<LinkedSkillSummary>,
     pub origin_issues: Vec<u64>,
     pub matched_kind: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]

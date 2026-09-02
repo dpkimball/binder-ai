@@ -419,6 +419,7 @@ mod tests {
             linked_issues: vec![],
             linked_prs: vec![],
             linked_docs: vec![],
+            linked_skills: vec![],
             origin_issues: vec![],
             matched_kind: String::new(),
             file_roles: vec![],

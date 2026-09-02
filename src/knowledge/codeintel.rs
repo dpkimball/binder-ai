@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 use super::{
     DoctrineSnapshot, ExecutionRecord, FileRoleSummary, GuidanceSummary, Knowledge, KnowledgeError,
-    KnowledgePlan, LinkedDocSummary, LinkedIssueSummary, LinkedPrSummary, RecentChange,
-    ReindexStats, TouchPointSummary,
+    KnowledgePlan, LinkedDocSummary, LinkedIssueSummary, LinkedPrSummary, LinkedSkillSummary,
+    RecentChange, ReindexStats, TouchPointSummary,
 };
 
 /// Invoke the `codeintel` CLI (JSON on stdout).
@@ -330,6 +330,22 @@ pub fn plan_from_architecture_json(
                 .collect()
         })
         .unwrap_or_default();
+    let linked_skills = value
+        .get("linked_skills")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(LinkedSkillSummary {
+                        name: v.get("name")?.as_str()?.to_string(),
+                        path: v.get("path")?.as_str()?.to_string(),
+                        namespace: v.get("namespace")?.as_str()?.to_string(),
+                        description: v.get("description")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let origin_issues = value
         .get("origin_issues")
         .and_then(|v| v.as_array())
@@ -401,6 +417,7 @@ pub fn plan_from_architecture_json(
         linked_issues,
         linked_prs,
         linked_docs,
+        linked_skills,
         origin_issues,
         matched_kind,
         file_roles,

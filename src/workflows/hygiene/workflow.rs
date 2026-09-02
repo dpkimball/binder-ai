@@ -125,6 +125,7 @@ impl<R: Runtime + Clone, K: Knowledge> HygieneWorkflow<R, K> {
                     linked_issues: Vec::new(),
                     linked_prs: Vec::new(),
                     linked_docs: Vec::new(),
+                    linked_skills: Vec::new(),
                     origin_issues: Vec::new(),
                     matched_kind: "none".into(),
                     file_roles: Vec::new(),
