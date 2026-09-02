@@ -3,12 +3,14 @@ name = "binder-ai"
 version = "0.1.1"
 edition = "2021"
 rust-version = "1.82"
-authors = ["DPK Platform Team"]
+authors = ["Binder contributors"]
 license = "MIT"
 description = "Binder AI orchestration: routing, prompts, tools, and task-oriented APIs over binder-llm"
 repository = "https://github.com/dpkimball/binder-ai"
+homepage = "https://github.com/dpkimball/binder-ai-releases"
 readme = "README.md"
 # Private Kellnr registry only — never crates.io.
+# Public consumers: binder-ai-releases binaries (see docs/specs/private-source-public-binary.md).
 publish = ["dpk"]
 
 [features]
@@ -49,3 +51,8 @@ globset = "0.4"
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tempfile = "3"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

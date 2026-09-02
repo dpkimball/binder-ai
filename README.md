@@ -25,16 +25,18 @@ Architectural context comes from bindb (`Knowledge`) before any LLM call. See [d
 - `binder-ai-plan` — one-shot inspect set for Cursor (stdout JSON, no HTTP, no model, no writes)
 - `binder-ai-serve` (`--features intel`) — `POST /plan` engineering context for IDEs. No model, no writes.
 
-HTTP for **providers** stays in `binder-llm`. Engineering intelligence is `binder-ai-plan` (CLI) and `binder-ai-serve` (HTTP). Cursor in `dpk-workspace` must call `scripts/binder-plan` before searching the tree.
+HTTP for **providers** stays in `binder-llm`. Engineering intelligence is `binder-ai-plan` (CLI) and `binder-ai-serve` (HTTP). Workspace Cursor clients should call their `scripts/binder-plan` (or equivalent) before searching the tree.
 
-QA (`binder-ai-serve-qa`, Argo `services-parent`): `GET /health` and `POST /plan` at `http://192.168.86.47:31784`. Image is built by `.github/workflows/image.yml` onto `localhost:30500`. Workstation:
+**Operator QA / image:** set `BINDER_AI_PLAN_URL` to your serve endpoint (no baked LAN default in this crate). Image tags and in-cluster registry names live in your Helm/overlay values, not library defaults. Workstation example:
 
 ```sh
-export BINDER_AI_PLAN_URL=http://192.168.86.47:31784
+export BINDER_AI_PLAN_URL=http://<your-host>:<port>
 scripts/binder-plan "what docker files have been used"
 ```
 
-Omit `workspace` in the JSON (the script does). The pod uses `BINDER_AI_WORKSPACE=/data/workspace` so inspect paths resolve against the seeded checkouts.
+Omit `workspace` in the JSON when the pod sets `BINDER_AI_WORKSPACE` so inspect paths resolve against seeded checkouts.
+
+**Public binaries:** tag `v*` → [`binder-ai-releases`](https://github.com/dpkimball/binder-ai-releases). See [`docs/specs/private-source-public-binary.md`](docs/specs/private-source-public-binary.md).
 
 ## Usage
 
