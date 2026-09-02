@@ -69,7 +69,10 @@ pub fn resolve_profile_path() -> Option<PathBuf> {
     }
     if let Ok(ws) = env::var("BINDER_AI_WORKSPACE") {
         let root = PathBuf::from(ws);
-        for rel in ["binder-profile.toml", "binder-workspace/binder-profile.toml"] {
+        for rel in [
+            "binder-profile.toml",
+            "binder-workspace/binder-profile.toml",
+        ] {
             let candidate = root.join(rel);
             if candidate.is_file() {
                 return Some(candidate);
