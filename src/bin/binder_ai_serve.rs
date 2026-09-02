@@ -448,8 +448,7 @@ async fn execute_ask(
         ));
     }
 
-    let guidance_request = format!("{repo}: {question}");
-    if let Ok(fast_guidance) = state.knowledge.guidance(&guidance_request) {
+    if let Ok(fast_guidance) = state.knowledge.guidance(&question, Some(&repo)) {
         let repo_guidance_fast = filter_guidance_for_repo(&fast_guidance, &repo);
         if let Some((id, answer, _score)) =
             select_bank_answer(&repo, &question, &repo_guidance_fast)
