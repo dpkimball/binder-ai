@@ -9,7 +9,7 @@ targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
 github-releases-repo = "dpkimball/binder-ai-releases"
 include = ["packaging/LICENSE.txt", "packaging/README.txt"]
 # Resolve binder-llm via sibling path checkout during release builds (no LAN Kellnr).
-github-build-setup = "dist-cargo-registry-setup.yml"
+github-build-setup = ".github/cargo-dist/binder-llm-checkout.yml"
 pr-run-mode = "skip"
 source-tarball = false
 allow-dirty = ["ci"]
