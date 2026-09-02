@@ -36,6 +36,14 @@ cargo-dist (`dist-workspace.toml`) builds `aarch64-apple-darwin` and `x86_64-unk
 
 Release CI must resolve `binder-llm` from Kellnr: secrets `PRIVATE_CARGO_URL`, `CARGO_REGISTRIES_DPK_TOKEN`, plus `GH_RELEASES_TOKEN` for the public releases repo. Setup fragment: `.github/workflows/dist-cargo-registry-setup.yml` (included via `github-build-setup`).
 
+Public install docs must match cargo-dist naming: `binder-ai-<rust-target-triple>.tar.xz`, per-archive `*.tar.xz.sha256`, and `sha256.sum`.
+
+### cargo-dist announcement URL drift
+
+`github-releases-repo` uploads to the public repo, but cargo-dist still embeds **private** `dpkimball/binder-ai` download URLs in the release body and `dist-manifest.json` hosting block (upstream: [axodotdev/cargo-dist#2252](https://github.com/axodotdev/cargo-dist/issues/2252)).
+
+Mitigation: `.github/workflows/fix-binder-ai-releases-announcement.yml` rewrites those URLs after a successful `Release` (requires `GH_RELEASES_TOKEN`).
+
 ## Image (Phase 1b)
 
 Container image publish (GHCR / operator registry) is **deferred**. Helm/QA overlays remain the DPK image path until documented.

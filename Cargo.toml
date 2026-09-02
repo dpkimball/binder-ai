@@ -7,6 +7,7 @@ authors = ["Binder contributors"]
 license = "MIT"
 description = "Binder AI orchestration: routing, prompts, tools, and task-oriented APIs over binder-llm"
 repository = "https://github.com/dpkimball/binder-ai"
+homepage = "https://github.com/dpkimball/binder-ai-releases"
 readme = "README.md"
 # Private Kellnr registry only — never crates.io.
 # Public consumers: binder-ai-releases binaries (see docs/specs/private-source-public-binary.md).
