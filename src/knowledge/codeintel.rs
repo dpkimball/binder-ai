@@ -118,16 +118,25 @@ impl<C: CodeintelCli> Knowledge for CodeintelKnowledge<C> {
         plan_from_architecture_json(&stdout)
     }
 
-    fn guidance(&self, request: &str) -> std::result::Result<Vec<GuidanceSummary>, KnowledgeError> {
+    fn guidance(
+        &self,
+        request: &str,
+        repo: Option<&str>,
+    ) -> std::result::Result<Vec<GuidanceSummary>, KnowledgeError> {
         let store = self.store.display().to_string();
-        let stdout = self.cli.run(&[
+        let mut args = vec![
             "architecture".into(),
             "--store".into(),
             store,
             "guidance".into(),
             "--request".into(),
             request.into(),
-        ])?;
+        ];
+        if let Some(r) = repo {
+            args.push("--repo".into());
+            args.push(r.into());
+        }
+        let stdout = self.cli.run(&args)?;
         guidance_array_from_json(&stdout)
     }
 

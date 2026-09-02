@@ -100,6 +100,7 @@ impl Knowledge for MemoryKnowledge {
     fn guidance(
         &self,
         _request: &str,
+        _repo: Option<&str>,
     ) -> std::result::Result<Vec<super::GuidanceSummary>, KnowledgeError> {
         Ok(self.plan.guidance.clone())
     }
