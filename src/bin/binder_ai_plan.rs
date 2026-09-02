@@ -32,6 +32,8 @@ fn run() -> Result<(), String> {
     let codeintel = flag(&args, "--codeintel")
         .unwrap_or_else(|| env::var("CODEINTEL_BIN").unwrap_or_else(|_| "codeintel".into()));
 
+    binder_ai::install_bank_prefixes_from_env()?;
+
     let knowledge = CodeintelKnowledge::new(
         PathBuf::from(store),
         Vec::new(),
