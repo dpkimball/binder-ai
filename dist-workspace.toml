@@ -1,0 +1,12 @@
+[workspace]
+members = ["cargo:."]
+
+[dist]
+cargo-dist-version = "0.32.0"
+ci = "github"
+installers = []
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+github-releases-repo = "dpkimball/binder-ai-releases"
+include = ["packaging/LICENSE.txt", "packaging/README.txt"]
+# Resolve binder-llm from private Kellnr during release builds.
+github-build-setup = "dist-cargo-registry-setup.yml"

@@ -18,10 +18,17 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.iter().any(|a| a == "-V" || a == "--version" || a == "version") {
+        println!("binder-ai-plan {}", env!("CARGO_PKG_VERSION"));
+        println!("commit: {}", env!("BINDER_AI_GIT_SHA"));
+        println!("built: {}", env!("BINDER_AI_BUILD_DATE"));
+        return Ok(());
+    }
     if args.iter().any(|a| a == "-h" || a == "--help") {
         eprintln!(
             "binder-ai-plan --request TEXT [--workspace DIR] [--store DIR] [--codeintel BIN]"
         );
+        eprintln!("  -V, --version    Print version and build provenance");
         return Ok(());
     }
     let request = required_flag(&args, "--request")?;

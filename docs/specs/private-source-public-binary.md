@@ -1,0 +1,45 @@
+---
+id: private-source-public-binary
+title: binder-ai — private source / public binary distribution
+status: draft
+created: 2026-09-02
+updated: 2026-09-02
+owner: binder-ai
+github_issue: https://github.com/dpkimball/binder-ai/issues/67
+related:
+  - https://github.com/dpkimball/binder-ai/issues/67
+  - https://github.com/dpkimball/bindb/issues/97
+  - https://github.com/dpkimball/binder-llm/issues/6
+  - https://github.com/dpkimball/binder-workspace/issues/194
+---
+
+# binder-ai — private source / public binary distribution
+
+## Purpose
+
+Publish **public compiled binaries** (`binder-ai-plan`, `binder-ai-serve`) without exposing private source. Mirror bindb / binder-llm cargo-dist → `*-releases`.
+
+## Public executable contract
+
+```text
+binder-ai-plan --version
+binder-ai-serve --version
+binder-ai-plan --help
+binder-ai-serve --help
+```
+
+`--version` prints semver + short commit + build date. No private repo URLs. No baked LAN hosts — store/workspace/profile via flags and env.
+
+## Release automation
+
+cargo-dist (`dist-workspace.toml`) builds `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu`, includes proprietary `packaging/*`, publishes to [`dpkimball/binder-ai-releases`](https://github.com/dpkimball/binder-ai-releases).
+
+Release CI must resolve `binder-llm` from Kellnr: secrets `PRIVATE_CARGO_URL`, `CARGO_REGISTRIES_DPK_TOKEN`, plus `GH_RELEASES_TOKEN` for the public releases repo. Setup fragment: `.github/workflows/dist-cargo-registry-setup.yml` (included via `github-build-setup`).
+
+## Image (Phase 1b)
+
+Container image publish (GHCR / operator registry) is **deferred**. Helm/QA overlays remain the DPK image path until documented.
+
+## Out of scope
+
+Open-sourcing private source; shipping DPK question-bank / seed inventory inside release archives.
