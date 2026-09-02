@@ -52,6 +52,7 @@ impl MemoryKnowledge {
                 linked_issues: Vec::new(),
                 linked_prs: Vec::new(),
                 linked_docs: Vec::new(),
+                linked_skills: Vec::new(),
                 origin_issues: Vec::new(),
                 matched_kind: "none".into(),
                 file_roles: Vec::new(),
@@ -94,6 +95,13 @@ impl Knowledge for MemoryKnowledge {
     fn plan(&self, _request: &str) -> std::result::Result<KnowledgePlan, KnowledgeError> {
         self.plan_calls.fetch_add(1, Ordering::SeqCst);
         Ok(self.plan.clone())
+    }
+
+    fn guidance(
+        &self,
+        _request: &str,
+    ) -> std::result::Result<Vec<super::GuidanceSummary>, KnowledgeError> {
+        Ok(self.plan.guidance.clone())
     }
 
     fn doctrine(&self) -> std::result::Result<DoctrineSnapshot, KnowledgeError> {

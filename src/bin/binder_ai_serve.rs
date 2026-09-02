@@ -15,7 +15,8 @@ use binder_ai::{
     filter_linked_docs_strict_for_repo, filter_paths_for_repo, is_repo_known, lang_hint,
     matched_alias, parse_scoped_ask, plan, resolve_correction_id, safe_truncate,
     select_bank_answer, AiClient, AiClientBuilder, AiRequest, CodeintelKnowledge, DomainError,
-    IntelError, Knowledge, PlanRequest, PlanResponse, ProcessCodeintelCli, ScopedAskBody, TaskKind,
+    IntelError, Knowledge, PlanRequest, PlanResponse, PlanningMetrics, PlanningResult,
+    ProcessCodeintelCli, ScopedAskBody, TaskKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -447,6 +448,31 @@ async fn execute_ask(
         ));
     }
 
+    let guidance_request = format!("{repo}: {question}");
+    if let Ok(fast_guidance) = state.knowledge.guidance(&guidance_request) {
+        let repo_guidance_fast = filter_guidance_for_repo(&fast_guidance, &repo);
+        if let Some((id, answer, _score)) =
+            select_bank_answer(&repo, &question, &repo_guidance_fast)
+        {
+            let winning = repo_guidance_fast
+                .iter()
+                .find(|g| g.id == id)
+                .expect("select_bank_answer id must exist in filtered guidance");
+            return Ok(Json(ask_response_from_parts(
+                answer,
+                "bank",
+                Some(id),
+                repo,
+                vec![],
+                vec![guidance_out(winning, &question)],
+                vec![],
+                vec![],
+                0,
+                &guidance_only_plan_stub(),
+            )));
+        }
+    }
+
     let plan_request = PlanRequest {
         workspace: request.workspace.clone(),
         request: format!("{repo}: {question}"),
@@ -552,6 +578,44 @@ fn guidance_out(g: &binder_ai::GuidanceSummary, user_question: &str) -> Guidance
         version: g.version,
         match_score: g.match_score,
         matched_alias: matched_alias(user_question, g),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn guidance_only_plan_stub() -> PlanResponse {
+    PlanResponse {
+        planning_source: "bindb",
+        planning_result: PlanningResult::Resolved,
+        fallback_required: false,
+        fallback_reason: None,
+        repository_discovery_recommended: false,
+        primary_source: "bindb",
+        inspection_set: vec![],
+        resolved_execution_paths: vec![],
+        unresolved: vec![],
+        reasoning: String::new(),
+        doctrine: vec![],
+        impact: vec![],
+        recent_changes: vec![],
+        linked_issues: vec![],
+        linked_prs: vec![],
+        linked_docs: vec![],
+        origin_issues: vec![],
+        matched_kind: String::new(),
+        file_roles: vec![],
+        touch_sequence: vec![],
+        matched_summary: String::new(),
+        task_hint: String::new(),
+        metrics: PlanningMetrics {
+            planning_source: "bindb",
+            planning_result: PlanningResult::Resolved,
+            fallback_required: false,
+            fallback_reason: None,
+            inspection_set_size: 0,
+            files_opened_from_inspection_set: 0,
+            repository_search_performed: false,
+        },
+        guidance: vec![],
     }
 }
 
