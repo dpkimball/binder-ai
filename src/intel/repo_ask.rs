@@ -380,19 +380,15 @@ pub fn safe_truncate(s: &str, max_bytes: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intel::bank_profile::{
-        dpk_bank_prefixes_fixture, install_bank_prefix_registry, BankPrefixRegistry,
-    };
+    use crate::intel::bank_profile::{install_bank_prefix_registry, install_sample_test_prefixes};
     use crate::intel::PlanningMetrics;
     use crate::knowledge::LinkedDocSummary;
     use crate::knowledge::LinkedIssueSummary;
     use std::sync::Once;
 
-    fn install_dpk_prefixes() {
+    fn install_test_prefixes() {
         static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            install_bank_prefix_registry(BankPrefixRegistry::from_map(dpk_bank_prefixes_fixture()));
-        });
+        ONCE.call_once(install_sample_test_prefixes);
     }
 
     fn sample_plan(
@@ -438,7 +434,7 @@ mod tests {
 
     #[test]
     fn correction_id_is_stable_for_same_question() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let a = correction_id("What is the bindb write boundary?");
         let b = correction_id("What is the bindb write boundary?");
         assert_eq!(a, b);
@@ -447,14 +443,14 @@ mod tests {
 
     #[test]
     fn resolve_correction_id_prefers_explicit_bank_id() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         assert_eq!(resolve_correction_id(Some("C1"), "any question"), "C1");
         assert!(resolve_correction_id(None, "What is make b?").starts_with("COR-"));
     }
 
     #[test]
     fn filter_paths_for_repo_excludes_other_repos() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let paths = vec![
             "apple-health-binder/README.md".into(),
             "codeintel/src/architecture.rs".into(),
@@ -466,7 +462,7 @@ mod tests {
 
     #[test]
     fn filter_guidance_prefers_repo_prefix() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = vec![
             GuidanceSummary {
                 id: "A4".into(),
@@ -501,7 +497,7 @@ mod tests {
 
     #[test]
     fn assess_rejects_cross_only_guidance_when_unresolved() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = filter_guidance_for_repo(
             &[GuidanceSummary {
                 id: "X11".into(),
@@ -520,7 +516,7 @@ mod tests {
 
     #[test]
     fn assess_rejects_unresolved_without_repo_context() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let plan = sample_plan(
             PlanningResult::Unresolved,
             vec![GuidanceSummary {
@@ -538,7 +534,7 @@ mod tests {
 
     #[test]
     fn assess_allows_guidance_only_context() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = filter_guidance_for_repo(
             &[GuidanceSummary {
                 id: "F9".into(),
@@ -556,7 +552,7 @@ mod tests {
 
     #[test]
     fn filter_guidance_for_repo_dashboard_uses_r_prefix() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = vec![
             GuidanceSummary {
                 id: "R1".into(),
@@ -582,7 +578,7 @@ mod tests {
 
     #[test]
     fn assess_allows_repo_dashboard_guidance_only() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = filter_guidance_for_repo(
             &[GuidanceSummary {
                 id: "R1".into(),
@@ -600,7 +596,7 @@ mod tests {
 
     #[test]
     fn ask_prompt_marks_guidance_authoritative_and_scopes_repo() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = vec![GuidanceSummary {
             id: "C1".into(),
             question: "What is the boundary?".into(),
@@ -626,7 +622,7 @@ mod tests {
 
     #[test]
     fn strict_docs_do_not_fallback_to_other_repos() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let docs = vec![LinkedDocSummary {
             path: "codev/plans/foo.md".into(),
             title: "plan".into(),
@@ -639,7 +635,7 @@ mod tests {
 
     #[test]
     fn filter_issues_for_repo_excludes_other_repos() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let issues = vec![
             LinkedIssueSummary {
                 number: 1,
@@ -663,7 +659,7 @@ mod tests {
 
     #[test]
     fn matched_alias_prefers_better_phrasing() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let g = GuidanceSummary {
             id: "C7".into(),
             question: "When PlanReport changes?".into(),
@@ -681,7 +677,7 @@ mod tests {
 
     #[test]
     fn golden_binder_ai_plan_no_llm_in_guidance_prompt() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = vec![GuidanceSummary {
             id: "A4".into(),
             question: "Difference between binder-ai-plan and binder-ai-serve?".into(),
@@ -704,7 +700,7 @@ mod tests {
 
     #[test]
     fn select_bank_answer_requires_min_score() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = vec![GuidanceSummary {
             id: "C1".into(),
             question: "boundary?".into(),
@@ -730,7 +726,7 @@ mod tests {
 
     #[test]
     fn select_bank_answer_breaks_match_score_ties_by_question_overlap() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = vec![
             GuidanceSummary {
                 id: "C17".into(),
@@ -763,7 +759,7 @@ mod tests {
 
     #[test]
     fn prefix_less_repo_gets_x_guidance_only() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let guidance = vec![
             GuidanceSummary {
                 id: "C1".into(),
@@ -789,7 +785,7 @@ mod tests {
 
     #[test]
     fn is_repo_known_accepts_prefix_or_indexed() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         assert!(is_repo_known("codeintel", &[]));
         assert!(is_repo_known("keepsake", &["keepsake".into()]));
         assert!(!is_repo_known("keepsake", &[]));
@@ -801,7 +797,7 @@ mod tests {
 
     #[test]
     fn inference_prompt_includes_low_confidence_disclaimer() {
-        install_dpk_prefixes();
+        install_test_prefixes();
         let prompt = build_ask_prompt(
             "codeintel",
             "kafka?",

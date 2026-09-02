@@ -1,0 +1,9 @@
+# Sample bank prefixes for binder-ai unit tests only.
+# Not a product catalog — operators supply their own binder-profile.toml.
+profile_id = "unit-test-sample"
+
+[bank_prefixes]
+codeintel = "C"
+binder-ai = "A"
+foreman = "F"
+repo-dashboard = "R"
