@@ -1,8 +1,7 @@
 //! Workspace profile: bank ID prefixes (spec 017 Phase 1).
 //!
-//! Library default is **empty**. DPK (and other operators) load
-//! `binder-profile.toml` via `BINDER_WORKSPACE_PROFILE` or
-//! `$BINDER_AI_WORKSPACE/binder-profile.toml`.
+//! Library default is **empty**. Operators load `binder-profile.toml` via
+//! `BINDER_WORKSPACE_PROFILE` or `$BINDER_AI_WORKSPACE/binder-profile.toml`.
 
 use std::collections::BTreeMap;
 use std::env;
@@ -11,7 +10,7 @@ use std::sync::{OnceLock, RwLock};
 
 use serde::Deserialize;
 
-/// Repo name → question-bank ID prefix (`codeintel` → `C`).
+/// Repo name → question-bank ID prefix (from the operator profile).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BankPrefixRegistry {
     prefixes: BTreeMap<String, String>,
@@ -113,7 +112,7 @@ pub fn bank_prefix_map() -> BTreeMap<String, String> {
         .clone()
 }
 
-/// Question-bank ID prefix for a repo (`C1` → codeintel when profile says so).
+/// Question-bank ID prefix for a repo when the installed profile defines one.
 pub fn guidance_id_prefix(repo: &str) -> Option<String> {
     registry()
         .read()
@@ -122,21 +121,12 @@ pub fn guidance_id_prefix(repo: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// DPK map used only in unit tests and as the checked-in `binder-profile.toml` content.
-/// Not the library default.
+/// Prefixes for this crate's unit tests — loaded from testdata, not a product catalog.
 #[cfg(test)]
-pub fn dpk_bank_prefixes_fixture() -> BTreeMap<String, String> {
-    BTreeMap::from([
-        ("codeintel".into(), "C".into()),
-        ("binder-ai".into(), "A".into()),
-        ("bindb".into(), "B".into()),
-        ("foreman".into(), "F".into()),
-        ("binder-llm".into(), "L".into()),
-        ("repo-dashboard".into(), "R".into()),
-        ("dpk-build".into(), "DB".into()),
-        ("dpk-ci".into(), "DC".into()),
-        ("dpk-infra".into(), "DI".into()),
-    ])
+pub(crate) fn install_sample_test_prefixes() {
+    let reg = parse_profile_toml(include_str!("testdata/sample-bank-prefixes.toml"))
+        .expect("sample-bank-prefixes.toml");
+    install_bank_prefix_registry(reg);
 }
 
 #[cfg(test)]
@@ -146,7 +136,7 @@ mod tests {
     #[test]
     fn empty_registry_has_no_prefixes() {
         let reg = BankPrefixRegistry::empty();
-        assert!(reg.prefix_for("codeintel").is_none());
+        assert!(reg.prefix_for("any-repo").is_none());
     }
 
     #[test]
@@ -158,7 +148,7 @@ acme-api = "Z"
 "#;
         let reg = parse_profile_toml(toml).unwrap();
         assert_eq!(reg.prefix_for("acme-api"), Some("Z"));
-        assert!(reg.prefix_for("codeintel").is_none());
+        assert!(reg.prefix_for("other").is_none());
     }
 
     #[test]
@@ -167,8 +157,19 @@ acme-api = "Z"
         map.insert("acme-api".into(), "Z".into());
         install_bank_prefix_registry(BankPrefixRegistry::from_map(map));
         assert_eq!(guidance_id_prefix("acme-api").as_deref(), Some("Z"));
-        assert!(guidance_id_prefix("codeintel").is_none());
-        // Restore DPK fixture so parallel repo_ask tests keep working.
-        install_bank_prefix_registry(BankPrefixRegistry::from_map(dpk_bank_prefixes_fixture()));
+        assert!(guidance_id_prefix("other").is_none());
+        // Restore sample map so parallel repo_ask tests keep working.
+        install_sample_test_prefixes();
+    }
+
+    #[test]
+    fn sample_testdata_has_no_dpk_org_repos() {
+        let reg = parse_profile_toml(include_str!("testdata/sample-bank-prefixes.toml")).unwrap();
+        for forbidden in ["dpk-build", "dpk-ci", "dpk-infra", "dpk-codev", "dpk-docs"] {
+            assert!(
+                reg.prefix_for(forbidden).is_none(),
+                "sample fixture must not embed {forbidden}"
+            );
+        }
     }
 }
