@@ -380,7 +380,7 @@ pub fn safe_truncate(s: &str, max_bytes: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intel::bank_profile::{install_bank_prefix_registry, install_sample_test_prefixes};
+    use crate::intel::bank_profile::install_sample_test_prefixes;
     use crate::intel::PlanningMetrics;
     use crate::knowledge::LinkedDocSummary;
     use crate::knowledge::LinkedIssueSummary;
