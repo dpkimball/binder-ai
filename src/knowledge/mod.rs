@@ -140,6 +140,15 @@ pub struct LinkedDocSummary {
     pub kind: String,
 }
 
+/// Cursor/Claude skill whose tokens overlap with the query.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LinkedSkillSummary {
+    pub name: String,
+    pub path: String,
+    pub namespace: String,
+    pub description: String,
+}
+
 /// Per-file role classification relative to the matched symbol.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileRoleSummary {
@@ -189,6 +198,8 @@ pub struct KnowledgePlan {
     pub linked_prs: Vec<LinkedPrSummary>,
     /// Top-matched doc files (CLAUDE.md, specs, Helm, CI).
     pub linked_docs: Vec<LinkedDocSummary>,
+    /// Skills whose description tokens overlap with the query.
+    pub linked_skills: Vec<LinkedSkillSummary>,
     /// Issue numbers linked to inspection-set files via git log REL_RESOLVES edges.
     pub origin_issues: Vec<u64>,
     /// Impact granularity: "symbol", "module", "crate", "file", "config", "none".
