@@ -154,18 +154,20 @@ pub fn filter_linked_issues_for_repo(
     issues.iter().filter(|i| i.repo == repo).cloned().collect()
 }
 
-/// Repo-specific guidance first, then cross-repo (`X*`). Prefix-less repos get `X*` only.
+/// Repo-specific guidance first, then cross-repo (`X*`). When prefix is unknown, return all guidance.
 pub fn filter_guidance_for_repo(guidance: &[GuidanceSummary], repo: &str) -> Vec<GuidanceSummary> {
-    let Some(prefix) = guidance_id_prefix(repo) else {
-        return guidance
-            .iter()
-            .filter(|g| g.id.starts_with('X'))
-            .cloned()
-            .collect();
-    };
+    let prefix = guidance_id_prefix(repo);
+    
+    // When prefix is unknown (not in profile), include ALL guidance instead of filtering.
+    // This prevents guidance loss when operators haven't configured binder-profile.toml yet.
+    if prefix.is_none() {
+        return guidance.to_vec();
+    }
+    
+    let prefix_str = prefix.unwrap();
     let mut repo_specific: Vec<_> = guidance
         .iter()
-        .filter(|g| g.id.starts_with(prefix.as_str()))
+        .filter(|g| g.id.starts_with(prefix_str.as_str()))
         .cloned()
         .collect();
     let mut cross: Vec<_> = guidance
@@ -758,7 +760,7 @@ mod tests {
     }
 
     #[test]
-    fn prefix_less_repo_gets_x_guidance_only() {
+    fn prefix_less_repo_gets_all_guidance() {
         install_test_prefixes();
         let guidance = vec![
             GuidanceSummary {
@@ -778,9 +780,13 @@ mod tests {
                 aliases: vec![],
             },
         ];
+        // Changed: when prefix is unknown (keepsake not in profile), return ALL guidance
+        // instead of filtering to X* only. This prevents guidance loss for repos without
+        // configured prefixes.
         let filtered = filter_guidance_for_repo(&guidance, "keepsake");
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].id, "X3");
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().any(|g| g.id == "C1"));
+        assert!(filtered.iter().any(|g| g.id == "X3"));
     }
 
     #[test]
