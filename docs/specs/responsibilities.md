@@ -46,7 +46,9 @@ binder-ai owns autonomous execution **and** engineering intelligence for tools:
 
 binder-ai does **not** implement LLM reasoning (no provider SDKs, no prompt-as-transport). It does **not** discover application structure by walking the repository when bindb can answer.
 
-`IssueImplementationWorkflow` still uses `Runtime::search` when no inspection set is supplied (`HygieneEngine::process_findings`). Bindb-first *engineering* uses `EngineeringWorkflow`. Hygiene **apply** uses `HygieneWorkflow`: findings come from live discovery; bindb is queried only when judgment needs an inspection set.
+`IssueImplementationWorkflow` still uses `Runtime::search` when no inspection set is supplied. Bindb-first *engineering* uses `EngineeringWorkflow`.
+
+Hygiene and documentation-review execution (`HygieneEngine`, `HygieneWorkflow`, `DocumentationReviewWorkflow`) moved to [`binder-dashboard-ops`](https://github.com/dpkimball/binder-dashboard-ops) (see `#73` / `docs/specs/scope-boundary-review.md`) — they are `repo-dashboard`-specific automation, not general AI orchestration. That crate depends on `binder-ai` as a library (`AiClient`, `Knowledge`, `Runtime`, `RoutingPolicy`, `WorkspaceLayout`) and follows the same shape described above: findings come from live discovery; bindb is queried only when judgment needs an inspection set; routine hygiene (fmt, clippy `--fix`, badge, delete merged branch) does not invoke `binder-llm`.
 
 ## binder-llm — reasoning
 
