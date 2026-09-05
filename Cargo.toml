@@ -22,10 +22,6 @@ xai = ["binder-llm/xai"]
 gemini = ["binder-llm/gemini"]
 all-providers = ["ollama", "openai", "anthropic", "xai", "gemini"]
 intel = ["dep:axum"]
-# repo-dashboard-specific automation adapters — not part of the public
-# artifact. Off by default so `cargo-dist` (default features) never builds
-# or ships them. repo-dashboard's Dockerfile opts in explicitly.
-dashboard-tools = []
 
 [[bin]]
 name = "binder-ai-plan"
@@ -35,16 +31,6 @@ path = "src/bin/binder_ai_plan.rs"
 name = "binder-ai-serve"
 path = "src/bin/binder_ai_serve.rs"
 required-features = ["intel"]
-
-[[bin]]
-name = "hygiene_apply"
-path = "src/bin/hygiene_apply.rs"
-required-features = ["dashboard-tools"]
-
-[[bin]]
-name = "documentation_review"
-path = "src/bin/documentation_review.rs"
-required-features = ["dashboard-tools"]
 
 [dependencies]
 async-trait = "0.1"
