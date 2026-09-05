@@ -1,23 +1,15 @@
 //! Concrete Binder workflows. Not a generic engine.
+//!
+//! Hygiene and documentation-review workflows were extracted to
+//! `binder-dashboard-ops` (see `#73` /
+//! `docs/specs/scope-boundary-review.md`) — they were repo-dashboard-specific
+//! automation, not general AI orchestration. That crate depends on this one.
 
-pub mod documentation;
 pub mod engineering;
-pub mod hygiene;
 pub mod issue;
 
-pub use documentation::{
-    DocumentationGap, DocumentationReviewReport, DocumentationReviewRequest,
-    DocumentationReviewWorkflow,
-};
 pub use engineering::{EngineeringReport, EngineeringRequest, EngineeringWorkflow};
 
-pub use hygiene::{
-    dispatch, AutoRemediation, DeterministicAction, DispatchDecision, Finding, FindingKind,
-    FindingOutcome, HygieneConfig, HygieneEngine, HygieneReport, HygieneWorkflow,
-    HygieneWorkflowReport, HygieneWorkflowRequest, OperationalContext, ProjectKind,
-    RemediationType, Severity, SkillApplyDocument, SkillApplyReport, SkillFindingJson,
-    SkillOperationalJson, SkillOutcomeJson,
-};
 pub use issue::{
     FileEdit, ImplementationPlan, Issue, IssueImplementationRequest, IssueImplementationResult,
     IssueImplementationWorkflow, WorkflowError,
