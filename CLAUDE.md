@@ -12,7 +12,7 @@ Do **not** walk the repository to discover architecture when bindb can answer. Q
 
 **Knowledge lifecycle (S1b):** After `POST /ask`, persist corrections via `/questions`, `/questions/correct`, `/questions/retire`, etc. Always pass `expected_version` from `guidance[].version` when updating an existing row. See `.cursor/rules/knowledge-lifecycle-writeback.mdc` in the workspace root.
 
-The `binder-ai-plan` binary is the one-shot Cursor client: bindb inspect set on stdout, no HTTP, no model. `binder-ai-serve` (`--features intel`) is the HTTP adapter (`POST /plan`). Neither calls a model or modifies repositories. IDEs must not talk to bindb’s store. Cursor agents in the parent workspace must run `scripts/binder-plan` before Grep/Glob. `hygiene_apply` / `documentation_review` (the Cursor skill / dashboard apply adapters) moved to [`binder-dashboard-ops`](https://github.com/dpkimball/binder-dashboard-ops) — see `#73`. Live Ollama uses `OLLAMA_HOST` (QA Argo `ollama-service` or dev `dev-proxies-ollama`).
+The `binder-ai-plan` binary is the one-shot Cursor client: bindb inspect set on stdout, no HTTP, no model. `binder-ai-implement` is the unattended issue entry: dry-run default, `--execute` writes via `IssueImplementationWorkflow` on the inspect set only (declines when `fallback_required`). `binder-ai-serve` (`--features intel`) is the HTTP adapter (`POST /plan`). Plan/serve do not call a model or modify repositories. IDEs must not talk to bindb’s store. Cursor agents in the parent workspace must run `scripts/binder-plan` before Grep/Glob. `hygiene_apply` / `documentation_review` (the Cursor skill / dashboard apply adapters) moved to [`binder-dashboard-ops`](https://github.com/dpkimball/binder-dashboard-ops) — see `#73`. Live Ollama uses `OLLAMA_HOST` (QA Argo `ollama-service` or dev `dev-proxies-ollama`).
 
 Do **not** create a `binder-runtime` crate. Keep `Runtime` here until multiple applications need it independently.
 
@@ -31,6 +31,7 @@ src/
   workspace/                         # semantic repo:path → execution checkout
   workflows/issue/                   # IssueImplementationWorkflow (search unless inspection_set)
   workflows/engineering/             # bindb-first EngineeringWorkflow
+  workflows/autonomous.rs            # binder-ai-implement: decline + dry-run + execute
 ```
 
 Hygiene (`HygieneEngine`, `HygieneWorkflow`) and documentation-review

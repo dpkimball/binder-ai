@@ -57,6 +57,7 @@ fn run() -> Result<(), String> {
             workspace: workspace.map(PathBuf::from),
             request,
             since_sha: None,
+            binds: Vec::new(),
         },
     )
     .map_err(|err| err.to_string())?;

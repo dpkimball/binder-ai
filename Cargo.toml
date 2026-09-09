@@ -28,6 +28,10 @@ name = "binder-ai-plan"
 path = "src/bin/binder_ai_plan.rs"
 
 [[bin]]
+name = "binder-ai-implement"
+path = "src/bin/binder_ai_implement.rs"
+
+[[bin]]
 name = "binder-ai-serve"
 path = "src/bin/binder_ai_serve.rs"
 required-features = ["intel"]
