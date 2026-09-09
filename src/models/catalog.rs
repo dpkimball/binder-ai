@@ -273,6 +273,28 @@ mod tests {
     }
 
     #[test]
+    fn ingested_mistral_latest_is_eligible_for_code_generation() {
+        use crate::models::ModelRequirements;
+        use crate::routing::{CatalogSelector, ModelSelector};
+        use crate::task::TaskKind;
+
+        let mut catalog = ModelCatalog::builtin();
+        catalog.ingest_names(Provider::Ollama, &["mistral:latest".into()]);
+        let mistral = catalog
+            .get(&ModelId::new(Provider::Ollama, "mistral:latest"))
+            .unwrap();
+        assert!(mistral.capabilities.coding);
+        assert!(mistral.capabilities.chat);
+        assert_eq!(mistral.availability, Availability::Available);
+        assert!(mistral.quality.coding >= 3);
+        let requirements = ModelRequirements::for_task(TaskKind::CodeGeneration, &catalog);
+        let selection = CatalogSelector::new()
+            .select(&TaskKind::CodeGeneration, &requirements, &catalog)
+            .unwrap();
+        assert_eq!(selection.chosen.upstream(), "mistral:latest");
+    }
+
+    #[test]
     fn configured_qwen_deepseek_installed_qwen_only() {
         let mut catalog = ModelCatalog::from_toml(
             r#"

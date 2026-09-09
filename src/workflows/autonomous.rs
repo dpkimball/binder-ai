@@ -169,6 +169,23 @@ pub async fn execute_implement<R: Runtime>(
     })
 }
 
+/// JSON the CLI prints when the workflow returns an error (Foreman must not see empty stdout).
+pub fn report_from_workflow_error(plan: &PlanResponse, err: &WorkflowError) -> ImplementReport {
+    ImplementReport {
+        success: false,
+        declined: false,
+        decline_reason: None,
+        dry_run: false,
+        llm_invoked: true,
+        summary: format!("{}: {}", err.kind(), err),
+        inspection_set: plan.inspection_set.clone(),
+        resolved_execution_paths: plan.resolved_execution_paths.clone(),
+        files_modified: Vec::new(),
+        planning: plan.for_agent(),
+        git_diff: None,
+    }
+}
+
 impl ImplementReport {
     fn with_reason_override(mut self, reason: &str) -> Self {
         self.dry_run = false;
@@ -179,7 +196,9 @@ impl ImplementReport {
 
 #[cfg(test)]
 mod prefix_tests {
-    use super::strip_repo_prefix;
+    use super::{report_from_workflow_error, strip_repo_prefix};
+    use crate::intel::{PlanResponse, PlanningMetrics, PlanningResult};
+    use crate::workflows::issue::WorkflowError;
     use std::path::PathBuf;
 
     #[test]
@@ -192,5 +211,55 @@ mod prefix_tests {
             strip_repo_prefix("src/lib.rs", "binder-ai", "binder-ai/"),
             PathBuf::from("src/lib.rs")
         );
+    }
+
+    #[test]
+    fn workflow_error_report_is_json_failure_with_kind() {
+        let plan = PlanResponse {
+            planning_source: "bindb",
+            planning_result: PlanningResult::Resolved,
+            fallback_required: false,
+            fallback_reason: None,
+            repository_discovery_recommended: false,
+            primary_source: "bindb",
+            inspection_set: vec!["src/lib.rs".into()],
+            resolved_execution_paths: vec!["src/lib.rs".into()],
+            unresolved: vec![],
+            reasoning: String::new(),
+            doctrine: vec![],
+            impact: vec![],
+            recent_changes: vec![],
+            linked_issues: vec![],
+            linked_prs: vec![],
+            linked_docs: vec![],
+            linked_skills: vec![],
+            origin_issues: vec![],
+            matched_kind: String::new(),
+            file_roles: vec![],
+            touch_sequence: vec![],
+            matched_summary: String::new(),
+            task_hint: String::new(),
+            metrics: PlanningMetrics {
+                planning_source: "bindb",
+                planning_result: PlanningResult::Resolved,
+                fallback_required: false,
+                fallback_reason: None,
+                inspection_set_size: 1,
+                files_opened_from_inspection_set: 0,
+                repository_search_performed: false,
+            },
+            guidance: vec![],
+        };
+        let err = WorkflowError::ImplementationFailed {
+            message: "no_eligible_model".into(),
+        };
+        let report = report_from_workflow_error(&plan, &err);
+        assert!(!report.success);
+        assert!(!report.declined);
+        assert!(report.summary.contains("implementation_failed"));
+        assert!(report.summary.contains("no_eligible_model"));
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("no_eligible_model"));
     }
 }

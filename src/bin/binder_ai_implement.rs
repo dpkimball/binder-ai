@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 use binder_ai::{
-    execute_implement, plan_for_implement, report_from_plan, AiClientBuilder, CodeintelKnowledge,
-    Issue, LocalRuntime, ProcessCodeintelCli,
+    execute_implement, plan_for_implement, report_from_plan, report_from_workflow_error,
+    AiClientBuilder, CodeintelKnowledge, Issue, LocalRuntime, ProcessCodeintelCli,
 };
 
 #[tokio::main]
@@ -88,9 +88,10 @@ async fn run() -> Result<ExitCode, String> {
         let runtime =
             LocalRuntime::new(&workspace_path).map_err(|err| format!("runtime: {err}"))?;
         let ai = AiClientBuilder::new().build();
-        execute_implement(runtime, ai, issue, workspace_path, &name, &plan)
-            .await
-            .map_err(|err| err.to_string())?
+        match execute_implement(runtime, ai, issue, workspace_path, &name, &plan).await {
+            Ok(report) => report,
+            Err(err) => report_from_workflow_error(&plan, &err),
+        }
     };
 
     let json = serde_json::to_string_pretty(&report).map_err(|err| err.to_string())?;

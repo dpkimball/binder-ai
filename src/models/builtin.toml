@@ -24,8 +24,10 @@ cost_class = "free"
 [[profiles]]
 provider = "ollama"
 model_prefix = "mistral"
-capabilities = { chat = true, coding = false, reasoning = true, planning = false, tools = false, structured_output = true, streaming = true }
-quality = { general = 4, coding = 2, reasoning = 3, tool_use = 2 }
+# Installed-only labs often have mistral and no qwen coder. Prefer-local
+# code_generation must still select it (chat+coding, quality.coding >= 3).
+capabilities = { chat = true, coding = true, reasoning = true, planning = false, tools = true, structured_output = true, streaming = true }
+quality = { general = 4, coding = 3, reasoning = 3, tool_use = 3 }
 cost_class = "free"
 
 [[profiles]]
@@ -73,8 +75,8 @@ key = "mistral-general"
 provider = "ollama"
 model = "mistral-small"
 execution = "local"
-capabilities = { chat = true, structured_output = true, streaming = true, reasoning = true }
-quality = { general = 4, coding = 2, reasoning = 3, tool_use = 2 }
+capabilities = { chat = true, coding = true, structured_output = true, streaming = true, reasoning = true, tools = true }
+quality = { general = 4, coding = 3, reasoning = 3, tool_use = 3 }
 cost_class = "free"
 
 [[models]]
