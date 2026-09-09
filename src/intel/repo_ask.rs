@@ -157,13 +157,13 @@ pub fn filter_linked_issues_for_repo(
 /// Repo-specific guidance first, then cross-repo (`X*`). When prefix is unknown, return all guidance.
 pub fn filter_guidance_for_repo(guidance: &[GuidanceSummary], repo: &str) -> Vec<GuidanceSummary> {
     let prefix = guidance_id_prefix(repo);
-    
+
     // When prefix is unknown (not in profile), include ALL guidance instead of filtering.
     // This prevents guidance loss when operators haven't configured binder-profile.toml yet.
     if prefix.is_none() {
         return guidance.to_vec();
     }
-    
+
     let prefix_str = prefix.unwrap();
     let mut repo_specific: Vec<_> = guidance
         .iter()
