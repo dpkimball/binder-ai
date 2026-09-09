@@ -58,14 +58,25 @@ impl<R: Runtime> IssueImplementationWorkflow<R> {
             modified.push(edit.path.clone());
         }
 
-        let fmt = phase("formatting", async {
-            validator::cargo_fmt(&self.runtime, &request.repository_root).await
-        })
-        .await?;
-        let test = phase("testing", async {
-            validator::cargo_test(&self.runtime, &request.repository_root).await
-        })
-        .await?;
+        let rust_touched = modified
+            .iter()
+            .any(|path| path.extension().is_some_and(|ext| ext == "rs"));
+        let fmt = if rust_touched {
+            phase("formatting", async {
+                validator::cargo_fmt(&self.runtime, &request.repository_root).await
+            })
+            .await?
+        } else {
+            crate::runtime::CommandResult::success("skipped: no rust edits")
+        };
+        let test = if rust_touched {
+            phase("testing", async {
+                validator::cargo_test(&self.runtime, &request.repository_root).await
+            })
+            .await?
+        } else {
+            crate::runtime::CommandResult::success("skipped: no rust edits")
+        };
         let git_diff = phase("git_diff", async {
             self.runtime
                 .git_diff()
