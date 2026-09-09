@@ -361,6 +361,7 @@ async fn explain_handler(
         workspace: request.workspace.clone(),
         request: text.clone(),
         since_sha: None,
+        binds: Vec::new(),
     };
     let plan_response = plan_or_bad_gateway(&state.knowledge, &plan_request)?;
 
@@ -494,6 +495,7 @@ async fn execute_ask(
         workspace: request.workspace.clone(),
         request: format!("{repo}: {question}"),
         since_sha: None,
+        binds: Vec::new(),
     };
     let plan_response = plan_or_bad_gateway(&state.knowledge, &plan_request)?;
 

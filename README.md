@@ -23,6 +23,7 @@ Architectural context comes from bindb (`Knowledge`) before any LLM call. See [d
 - `HygieneWorkflow` for bindb-first Hygiene: query `Knowledge`, skip binder-llm when dispatch is deterministic, validate, re-index, record execution history
 - `EngineeringWorkflow` for bindb-first engineering: query `Knowledge`, open only the inspection set, invoke binder-llm, validate, re-index
 - `binder-ai-plan` — one-shot inspect set for Cursor (stdout JSON, no HTTP, no model, no writes)
+- `binder-ai-implement` — unattended issue implementation (dry-run default; `--execute` writes; no `--publish` in this slice)
 - `binder-ai-serve` (`--features intel`) — `POST /plan` engineering context for IDEs. No model, no writes.
 
 HTTP for **providers** stays in `binder-llm`. Engineering intelligence is `binder-ai-plan` (CLI) and `binder-ai-serve` (HTTP). Workspace Cursor clients should call their `scripts/binder-plan` (or equivalent) before searching the tree.

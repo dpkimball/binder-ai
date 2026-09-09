@@ -38,6 +38,10 @@ pub struct PlanRequest {
     /// When set, `recent_changes` in the response lists inspection-set files that
     /// were added or removed between this SHA and HEAD. The SHA must already be indexed.
     pub since_sha: Option<String>,
+    /// Map bindb `repo:path` names onto checkouts. Foreman clones one repo and
+    /// binds `--name` to that checkout so qualified inspect targets resolve.
+    #[serde(default)]
+    pub binds: Vec<(String, PathBuf)>,
 }
 
 /// Whether bindb answered, answered incompletely, or could not answer.
@@ -162,10 +166,7 @@ pub fn plan<K: Knowledge>(
         ));
     }
 
-    let layout = match request.workspace.as_ref() {
-        Some(root) => WorkspaceLayout::new(root),
-        None => WorkspaceLayout::passthrough(),
-    };
+    let layout = layout_from_request(request);
     let attempt = resolve_inspection_set_best_effort(&layout, &knowledge_plan.inspection_set);
     let inspection_set: Vec<String> = knowledge_plan
         .inspection_set
@@ -375,6 +376,17 @@ pub struct AgentPlan {
     pub metrics: PlanningMetrics,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub guidance: Vec<GuidanceSummary>,
+}
+
+fn layout_from_request(request: &PlanRequest) -> WorkspaceLayout {
+    let mut layout = match request.workspace.as_ref() {
+        Some(root) => WorkspaceLayout::new(root),
+        None => WorkspaceLayout::passthrough(),
+    };
+    for (name, checkout) in &request.binds {
+        layout = layout.bind(name, checkout);
+    }
+    layout
 }
 
 fn path_string(path: impl AsRef<std::path::Path>) -> String {

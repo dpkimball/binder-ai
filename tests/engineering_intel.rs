@@ -17,6 +17,7 @@ fn plan_returns_bindb_context_without_opening_files() {
             workspace: None,
             request: "Where is OLLAMA_HOST configured?".into(),
             since_sha: None,
+            binds: Vec::new(),
         },
     )
     .unwrap();
@@ -72,6 +73,7 @@ fn plan_resolves_into_the_execution_workspace() {
             workspace: Some(root.path().to_path_buf()),
             request: "Where is OLLAMA_HOST configured?".into(),
             since_sha: None,
+            binds: Vec::new(),
         },
     )
     .unwrap();
@@ -96,6 +98,7 @@ fn empty_request_is_rejected() {
             workspace: None,
             request: "  ".into(),
             since_sha: None,
+            binds: Vec::new(),
         },
     )
     .unwrap_err();
@@ -128,6 +131,7 @@ fn empty_inspection_set_is_unresolved_fallback() {
             workspace: None,
             request: "unknown symbol".into(),
             since_sha: None,
+            binds: Vec::new(),
         },
     )
     .unwrap();
@@ -168,6 +172,7 @@ fn partial_workspace_resolution_recommends_discovery_without_requiring_it() {
             workspace: Some(root.path().to_path_buf()),
             request: "Where is OLLAMA_HOST configured?".into(),
             since_sha: None,
+            binds: Vec::new(),
         },
     )
     .unwrap();

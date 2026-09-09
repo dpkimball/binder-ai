@@ -3,11 +3,13 @@ id: autonomous-issue-worker
 title: binder-ai — entry point for autonomous issue implementation
 status: draft
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-09
 owner: binder-ai
-github_issue: https://github.com/dpkimball/binder-ai/issues/79
+github_issue: https://github.com/dpkimball/binder-ai/issues/81
 related:
+  - https://github.com/dpkimball/binder-ai/issues/81
   - https://github.com/dpkimball/binder-ai/issues/79
+  - https://github.com/dpkimball/foreman/issues/338
   - ./responsibilities.md
   - https://github.com/dpkimball/binder-workspace/blob/master/docs/development/01-issue-agent-pipeline.md
   - https://github.com/dpkimball/binder-workspace/blob/master/docs/development/02-issue-doctrine.md
@@ -63,31 +65,31 @@ A new binary, `binder-ai-implement` (working name), mirroring the existing
 
 ```text
 binder-ai-implement --repo <dir> --store <bindb-store> --name <label> \
-  --issue <github-issue-url-or-number> [--workspace <dir>] [--dry-run]
+  [--request TEXT | --issue <github-issue-url-or-number>] \
+  [--workspace <dir>] [--dry-run | --execute]
 ```
+
+Default is `--dry-run`. Foreman calls `--execute` and omits `--publish` (Foreman
+already clones, branches, and opens the PR). `--publish` is rejected in this
+slice.
 
 Steps:
 
-1. Fetch the issue body via `gh issue view` (same mechanism the Cursor
-   pipeline and this session's manual work already use).
-2. Resolve an inspection set the same way `binder-ai-plan` does today
-   (`Knowledge::plan` over bindb/codeintel) — reuse that code path, do not
-   fork a second planner.
-3. Feed the issue body + inspection set into `IssueImplementationWorkflow`.
-4. `Runtime` performs the edit, `cargo fmt`, `cargo test` (or the repo's
-   declared build commands), and produces a diff — this part already
-   exists and is tested.
-5. On success: create a branch, commit, push, open a PR via `gh pr create`
-   (same account/attribution convention as any other worker), and post an
-   evidence comment (issue body, PR link, test output) — mirroring the
-   Review ledger format from `02-issue-doctrine.md`.
-6. On failure or an escalation trigger (see below): leave the issue Open,
-   post a comment explaining what's blocked. Never force a partial or
-   low-confidence change through.
+1. Load the issue body from `--request` / `--title`+`--body`, or `gh issue view`
+   when `--issue` is set.
+2. Resolve an inspection set the same way `binder-ai-plan` does
+   (`Knowledge::plan` over bindb/codeintel), binding `--name` to `--workspace`
+   so `repo:path` inspect targets resolve on a single-repo checkout.
+3. If `fallback_required` or planning is not `resolved`, **decline** (JSON
+   `declined: true`). Do not search the repository.
+4. `--dry-run`: print the inspect set. No model, no writes.
+5. `--execute`: feed the issue body + inspection set into
+   `IssueImplementationWorkflow` (no search). `Runtime` edits, `cargo fmt`,
+   `cargo test`, and a diff. Foreman then publishes the branch.
 
 An HTTP twin (`binder-ai-serve` `POST /implement`) can follow the same
 plan/serve split as the existing endpoints, once the CLI is proven —
-out of scope for the first slice.
+out of scope for this slice.
 
 ### Escalation
 
@@ -119,7 +121,8 @@ trustworthy.
 
 ## Acceptance criteria
 
-See [`#79`](https://github.com/dpkimball/binder-ai/issues/79).
+See [`#81`](https://github.com/dpkimball/binder-ai/issues/81) (CLI). Spec text
+landed under [`#79`](https://github.com/dpkimball/binder-ai/issues/79).
 
 ## Phasing
 
