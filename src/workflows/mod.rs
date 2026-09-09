@@ -11,7 +11,7 @@ pub mod issue;
 
 pub use autonomous::{
     autonomous_decline_reason, checkout_relative_paths, execute_implement, plan_for_implement,
-    report_from_plan, ImplementReport,
+    report_from_plan, report_from_workflow_error, ImplementReport,
 };
 
 pub use engineering::{EngineeringReport, EngineeringRequest, EngineeringWorkflow};

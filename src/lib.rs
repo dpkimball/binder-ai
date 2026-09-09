@@ -81,9 +81,10 @@ pub use telemetry::{estimate_cost, estimate_cost_for, AiMetrics, CostEstimate};
 pub use tools::{MockToolExecutor, ToolExecutor, ToolKind, ToolRegistry, UnboundToolExecutor};
 pub use workflows::{
     autonomous_decline_reason, checkout_relative_paths, execute_implement, plan_for_implement,
-    report_from_plan, EngineeringReport, EngineeringRequest, EngineeringWorkflow, FileEdit,
-    ImplementReport, ImplementationPlan, Issue, IssueImplementationRequest,
-    IssueImplementationResult, IssueImplementationWorkflow, WorkflowError,
+    report_from_plan, report_from_workflow_error, EngineeringReport, EngineeringRequest,
+    EngineeringWorkflow, FileEdit, ImplementReport, ImplementationPlan, Issue,
+    IssueImplementationRequest, IssueImplementationResult, IssueImplementationWorkflow,
+    WorkflowError,
 };
 pub use workspace::{
     resolve_inspection_set, resolve_inspection_set_best_effort, InspectionAttempt,
