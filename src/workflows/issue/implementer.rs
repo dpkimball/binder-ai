@@ -50,16 +50,21 @@ pub async fn implement(
     let mut edits = Vec::new();
     let mut summaries = Vec::new();
     for (path, original) in targets {
-        if let Some(edit) = implement_one(ai, issue, plan, path, original).await? {
-            if edit.contents != original {
-                if !edit.summary.is_empty() {
-                    summaries.push(edit.summary.clone());
+        if let Some(round) = implement_one(ai, issue, plan, path, original).await? {
+            if let Some(edit) = round.matching {
+                if edit.contents != original {
+                    if !edit.summary.is_empty() {
+                        summaries.push(edit.summary.clone());
+                    }
+                    edits.push(FileEdit {
+                        path: edit.path,
+                        contents: edit.contents,
+                    });
                 }
-                edits.push(FileEdit {
-                    path: edit.path,
-                    contents: edit.contents,
-                });
             }
+            // Keep paths the model named that we did not ask for so the
+            // workflow can refuse them. Dropping them looked like empty_edits.
+            edits.extend(round.extras);
         }
     }
     if edits.is_empty() {
@@ -83,13 +88,26 @@ struct OneEdit {
     summary: String,
 }
 
+struct OneRound {
+    matching: Option<OneEdit>,
+    extras: Vec<FileEdit>,
+}
+
+fn path_matches(edit: &Path, requested: &Path) -> bool {
+    edit.as_os_str().is_empty()
+        || edit == requested
+        || edit.file_name() == requested.file_name()
+        || edit.ends_with(requested)
+        || requested.ends_with(edit)
+}
+
 async fn implement_one(
     ai: &AiClient,
     issue: &Issue,
     plan: &ImplementationPlan,
     path: &Path,
     original: &str,
-) -> Result<Option<OneEdit>, WorkflowError> {
+) -> Result<Option<OneRound>, WorkflowError> {
     let path_display = path.display();
     for attempt in 0..2 {
         let retry_note = if attempt == 0 {
@@ -116,17 +134,26 @@ async fn implement_one(
             .map_err(|err| WorkflowError::from_ai_implementation(&err))?;
         let output = implementation_output_from_value(value)?;
         let summary = output.summary;
-        let Some(edit) = output.edits.into_iter().next() else {
-            continue;
-        };
-        if edit.contents.trim().is_empty() {
+        let mut matching = None;
+        let mut extras = Vec::new();
+        for edit in output.edits {
+            if edit.contents.trim().is_empty() {
+                continue;
+            }
+            if path_matches(&edit.path, path) {
+                matching = Some(OneEdit {
+                    path: path.to_path_buf(),
+                    contents: edit.contents,
+                    summary: summary.clone(),
+                });
+            } else {
+                extras.push(edit);
+            }
+        }
+        if matching.is_none() && extras.is_empty() {
             continue;
         }
-        return Ok(Some(OneEdit {
-            path: path.to_path_buf(),
-            contents: edit.contents,
-            summary,
-        }));
+        return Ok(Some(OneRound { matching, extras }));
     }
     Ok(None)
 }
@@ -303,6 +330,29 @@ mod tests {
         let err = implement(&ai, &issue, &plan, &files).await.unwrap_err();
         assert_eq!(err.kind(), "implementation_failed");
         assert!(err.to_string().contains("empty_edits"));
+    }
+
+    #[tokio::test]
+    async fn extra_json_paths_are_returned_for_the_workflow_to_refuse() {
+        let scripted = ScriptedProvider::new().push_chat(assistant(
+            "{\"edits\":[{\"path\":\"CLAUDE.md\",\"contents\":\"# old\\n\"},{\"path\":\"README.md\",\"contents\":\"leaked\\n\"}]}",
+        ));
+        let ai = AiClient::builder()
+            .llm(llm(scripted, Provider::Ollama, "mistral"))
+            .build();
+        let issue = Issue::new("docs: fix naming", "Align CLAUDE.md");
+        let plan = ImplementationPlan {
+            files: vec![PathBuf::from("CLAUDE.md")],
+            steps: Vec::new(),
+            summary: String::new(),
+        };
+        let files = vec![(PathBuf::from("CLAUDE.md"), "# old\n".into())];
+        let out = implement(&ai, &issue, &plan, &files).await.unwrap();
+        assert!(out
+            .edits
+            .iter()
+            .any(|e| e.path.as_os_str() == "README.md" && e.contents == "leaked\n"));
+        assert!(!out.edits.iter().any(|e| e.path.as_os_str() == "CLAUDE.md"));
     }
 
     #[tokio::test]
