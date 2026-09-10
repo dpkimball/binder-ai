@@ -1,45 +1,7 @@
-# binder-ai
+Uses
+--------
 
-[![CI](https://github.com/dpkimball/binder-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/dpkimball/binder-ai/actions/workflows/ci.yml)
-[![Image](https://github.com/dpkimball/binder-ai/actions/workflows/image.yml/badge.svg)](https://github.com/dpkimball/binder-ai/actions/workflows/image.yml)
-
-binder-ai is Binder's **autonomous engineering orchestrator**.
-
-`bindb` answers facts. `binder-ai` decides **how, when, and why** an LLM is used and drives the workflow. `binder-llm` is the replaceable reasoning engine. Applications (`binder-server`, `binder-cloud`, `binder-desktop`, `binder-cli`) must not call `binder-llm` directly. All AI requests flow through `AiClient`.
-
-Architectural context comes from bindb (`Knowledge`) before any LLM call. See [docs/specs/responsibilities.md](docs/specs/responsibilities.md).
-
-## Role
-
-- Task-oriented API (`summarize`, `classify`, `extract`, `plan`, `execute`, …)
-- Policy-based routing and provider fallback
-- Versioned prompt registry
-- Composable context construction
-- Tool registry and execution (provider-neutral)
-- Semantic retries, token budgets, cost estimates, tracing metadata
-- `Runtime` for files, search, structured commands, and git (not LLM providers)
-- `IssueImplementationWorkflow` for a single concrete issue → plan → edit → fmt → test → diff path
-- `HygieneEngine` for optional Rust source remediation from deterministic repository findings (inspection stays outside this crate). Dashboard AI still uses `IssueImplementationWorkflow` search.
-- `HygieneWorkflow` for bindb-first Hygiene: query `Knowledge`, skip binder-llm when dispatch is deterministic, validate, re-index, record execution history
-- `EngineeringWorkflow` for bindb-first engineering: query `Knowledge`, open only the inspection set, invoke binder-llm, validate, re-index
-- `binder-ai-plan` — one-shot inspect set for Cursor (stdout JSON, no HTTP, no model, no writes)
-- `binder-ai-implement` — unattended issue implementation (dry-run default; `--execute` writes; no `--publish` in this slice)
-- `binder-ai-serve` (`--features intel`) — `POST /plan` engineering context for IDEs. No model, no writes.
-
-HTTP for **providers** stays in `binder-llm`. Engineering intelligence is `binder-ai-plan` (CLI) and `binder-ai-serve` (HTTP). Workspace Cursor clients should call their `scripts/binder-plan` (or equivalent) before searching the tree.
-
-**Operator QA / image:** set `BINDER_AI_PLAN_URL` to your serve endpoint (no baked LAN default in this crate). Image tags and in-cluster registry names live in your Helm/overlay values, not library defaults. Workstation example:
-
-```sh
-export BINDER_AI_PLAN_URL=http://<your-host>:<port>
-scripts/binder-plan "what docker files have been used"
-```
-
-Omit `workspace` in the JSON when the pod sets `BINDER_AI_WORKSPACE` so inspect paths resolve against seeded checkouts.
-
-**Public binaries:** tag `v*` → [`binder-ai-releases`](https://github.com/dpkimball/binder-ai-releases). See [`docs/specs/private-source-public-binary.md`](docs/specs/private-source-public-binary.md).
-
-## Usage
+### Rust
 
 ```rust
 use binder_ai::{AiClient, Task};
@@ -50,14 +12,10 @@ let ai = AiClient::builder().build();
 let summary = ai.summarize("long document…").await?;
 
 let review = ai
-    .execute(Task::ArchitectureReview {
-        repository: "dpkimball/binder-ai".into(),
-        pull_request: Some("12".into()),
-    })
-    .await?;
+    .execute(Task::ArchitectureReview {\n        repository: "dpkimball/binder-ai".into(),\n        pull_request: Some("12".into()),\    })\n    .await?;
 # let _ = (summary, review);
 # Ok(())
-# }
+}
 ```
 
 Routing picks the model from the catalog. Callers describe intent, not providers.
@@ -66,22 +24,11 @@ Routing picks the model from the catalog. Callers describe intent, not providers
 use binder_ai::{AiClient, AiRequest, CostClass, ExecutionPolicy, TaskKind};
 
 # async fn prefer_local(ai: AiClient) -> binder_ai::Result<()> {
-let request = AiRequest::builder()
-    .task(TaskKind::CodeGeneration)
-    .policy(ExecutionPolicy::PreferLocal)
-    .input("write a parser")
-    .build();
-let _ = ai.execute(request).await?;
+let request = AiRequest::builder()\n    .task(TaskKind::CodeGeneration)\n    .policy(ExecutionPolicy::PreferLocal)\n    .input("write a parser")\n    .build();\nlet _ = ai.execute(request).await?;
 
-let free = AiRequest::builder()
-    .task(TaskKind::Planning)
-    .policy(ExecutionPolicy::LowestCost)
-    .max_cost(CostClass::Free)
-    .input("plan the issue")
-    .build();
-let _ = ai.execute(free).await?;
+let free = AiRequest::builder()\n    .task(TaskKind::Planning)\n    .policy(ExecutionPolicy::LowestCost)\n    .max_cost(CostClass::Free)\n    .input("plan the issue")\n    .build();\nlet _ = ai.execute(free).await?;
 # Ok(())
-# }
+}
 ```
 
 `ExecutionPolicy::LocalOnly` / `Private` never send request content to a cloud provider. `max_cost` is never silently exceeded.
@@ -90,35 +37,17 @@ let _ = ai.execute(free).await?;
 use binder_ai::{AiClient, RoutingPolicy};
 
 # fn prefer_local_client() -> binder_ai::AiClient {
-AiClient::builder()
-    .routing_policy(RoutingPolicy::LocalOnly)
-    .build()
-# }
+AiClient::builder()\n    .routing_policy(RoutingPolicy::LocalOnly)\n    .build()
+}
 ```
 
 Tests inject a mock LLM — no network:
 
 ```rust
-use std::sync::Arc;
-use binder_ai::AiClient;
-use binder_llm::{ChatMessage, ChatResponse, LlmClient, MockProvider, Provider};
+use std::sync::Arc;\nuse binder_ai::AiClient;\nuse binder_llm::{ChatMessage, ChatResponse, LlmClient, MockProvider, Provider};
 
 # fn mock_ai() -> AiClient {
-let provider = MockProvider::new().with_chat(ChatResponse::new(
-    Provider::Ollama,
-    "mock",
-    ChatMessage::assistant("ok"),
-));
-let llm = LlmClient::from_provider(
-    Arc::new(provider),
-    LlmClient::builder()
-        .provider(Provider::Ollama)
-        .model("mock")
-        .build_config()
-        .expect("config"),
-);
-AiClient::builder().llm(llm).build()
-# }
+let provider = MockProvider::new().with_chat(ChatResponse::new( \n    Provider::Ollama,"mock", ChatMessage::assistant("ok")\n));\nlet llm = LlmClient::from_provider( \n    Arc::new(provider),\n    LlmClient::builder()\n        .provider(Provider::Ollama)\n        .model("mock")\n        .build_config()\n        .expect("config")\n);\nAiClient::builder().llm(llm).build()\n}
 ```
 
 Workflows talk to the development environment through `Runtime`, not `std::fs` or shell strings:
@@ -127,82 +56,14 @@ Workflows talk to the development environment through `Runtime`, not `std::fs` o
 use binder_ai::{Command, MemoryRuntime, Runtime, RuntimeError, SearchRequest};
 
 # async fn workflow(runtime: MemoryRuntime) -> Result<(), RuntimeError> {
-let hits = runtime.search(SearchRequest::content("fn add")).await?;
-let _fmt = runtime.execute(Command::new("cargo").arg("fmt")).await?;
-# let _ = hits;
-# Ok(())
-# }
+let hits = runtime.search(SearchRequest::content("fn add")).await?;\nlet _fmt = runtime.execute(Command::new("cargo").arg("fmt")).await?;\n# let _ = hits;\n# Ok(())
+}
 ```
 
 `MemoryRuntime` is for tests (in-memory files, scripted commands). `LocalRuntime::new(".")` is the development implementation.
 
-Repository Hygiene inspects repos deterministically. When a finding needs Rust source changes, it dispatches to `IssueImplementationWorkflow` through `HygieneEngine`. Inspection itself is not AI-driven. Production AI remediation uses default catalog discovery and `LocalOnly` routing:
-
-```rust
-use binder_ai::{AiClient, Finding, FindingKind, HygieneConfig, HygieneEngine, LocalRuntime, RoutingPolicy};
-
-# async fn hygiene(findings: Vec<Finding>) {
-let ai = AiClient::builder()
-    .routing_policy(RoutingPolicy::LocalOnly)
-    .build();
-let runtime = LocalRuntime::new(".").expect("workspace");
-let engine = HygieneEngine::new(HygieneConfig::default(), ai);
-let _report = engine.process_findings(runtime, &findings).await;
-# }
-```
-
-The workflow git diff is the output. Hygiene never commits, merges, pushes, or opens a PR.
-
-Bindb-first Hygiene (`HygieneWorkflow`): consume findings from live discovery, query `Knowledge` only when judgment needs an inspection set, skip binder-llm for deterministic apply, re-index and record history after validation. The Cursor skill writes `SkillApplyDocument` JSON and runs `cargo run --bin hygiene_apply`. Set `OLLAMA_HOST` for cluster/QA Ollama (Argo `ollama-qa` / `dev-proxies-ollama`). See [docs/specs/hygiene-workflow.md](docs/specs/hygiene-workflow.md). Dashboard Python apply calls that binary when it is on PATH.
-
-Bindb-first engineering (facts from `Knowledge`, no `Runtime::search`):
-
-```rust
-use std::path::PathBuf;
-use binder_ai::{
-    AiClient, EngineeringRequest, EngineeringWorkflow, LocalRuntime, MemoryKnowledge,
-};
-
-# async fn engineering(ai: AiClient) -> Result<(), binder_ai::WorkflowError> {
-let knowledge = MemoryKnowledge::for_files(
-    "prevent overflow in add",
-    [PathBuf::from("src/lib.rs")],
-);
-let runtime = LocalRuntime::new(".").expect("workspace");
-let workflow = EngineeringWorkflow::new(runtime, ai, knowledge);
-let _report = workflow
-    .execute(EngineeringRequest {
-        request: "prevent overflow in add".into(),
-        repository_root: PathBuf::from("."),
-    })
-    .await?;
-# Ok(())
-# }
-```
-
-Production `Knowledge` is a bindb/codeintel adapter. `MemoryKnowledge` is the test double.
-
-## Develop
-
-```text
-dpk-workspace/
-  dpk-build/
-  binder-llm/
-  binder-ai/
-```
-
-```sh
-cargo test --all-features
-cargo clippy --all-targets --all-features -- -D warnings
-make b   # lint + test; publishes to DEV Kellnr when not CI
-```
-
-Private Kellnr registry only (`publish = ["dpk"]`). Never crates.io. Depends on `binder-llm` from registry `dpk`.
-
-## Out of scope (deferred)
-
-Multi-agent graphs, MCP client, RAG pipelines, long-term memory, evaluation harness, human approval workflows.
-
-## License
-
-See repository license / parent workspace policy.
+## Development
+### Running Tests
+Run `cargo test --all-features` to run all features and unit tests. You can also run specific tests by specifying them on the command line.
+### Building
+Run `make b` to build, lint, and test the crate. This will publish the binary to the local Kellnr registry when not in a CI environment.
