@@ -176,6 +176,32 @@ fn is_lockfile(path: &Path) -> bool {
     path.file_name().is_some_and(|name| name == "Cargo.lock")
 }
 
+fn is_readme(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("README.md"))
+}
+
+fn mentioned_in_issue(issue: &Issue, path: &Path) -> bool {
+    let blob = issue.render().to_ascii_lowercase();
+    let display = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase();
+    if blob.contains(&display) {
+        return true;
+    }
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| blob.contains(&name.to_ascii_lowercase()))
+}
+
+fn to_pairs<'a>(rows: &[&'a (PathBuf, String)]) -> Vec<(&'a PathBuf, &'a str)> {
+    rows.iter()
+        .map(|(path, contents)| (path, contents.as_str()))
+        .collect()
+}
+
 fn target_files<'a>(
     issue: &Issue,
     plan: &ImplementationPlan,
@@ -192,6 +218,23 @@ fn target_files<'a>(
     if scoped.is_empty() {
         return Vec::new();
     }
+    if is_docs_issue(issue) {
+        let mentioned: Vec<_> = scoped
+            .iter()
+            .copied()
+            .filter(|(path, _)| mentioned_in_issue(issue, path))
+            .collect();
+        if !mentioned.is_empty() {
+            return to_pairs(&mentioned);
+        }
+        return to_pairs(
+            &scoped
+                .iter()
+                .copied()
+                .filter(|(path, _)| !is_readme(path))
+                .collect::<Vec<_>>(),
+        );
+    }
     if !plan.files.is_empty() {
         let selected: Vec<_> = scoped
             .iter()
@@ -204,17 +247,12 @@ fn target_files<'a>(
                         || want.ends_with(path)
                 })
             })
-            .map(|(path, contents)| (path, contents.as_str()))
             .collect();
         if !selected.is_empty() {
-            return selected;
+            return to_pairs(&selected);
         }
     }
-    scoped
-        .iter()
-        .copied()
-        .map(|(path, contents)| (path, contents.as_str()))
-        .collect()
+    to_pairs(&scoped)
 }
 
 fn file_edit_schema() -> Value {
@@ -370,11 +408,16 @@ mod tests {
         ];
         let issue = Issue::new(
             "docs: fix fallback_required doc/code naming drift in workflows/issue",
-            "No behavior change",
+            "Update docs/specs/responsibilities.md and CLAUDE.md. The implementation is src/workflows/issue/workflow.rs.",
         );
         let targets = target_files(&issue, &plan, &files);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].0, &PathBuf::from("CLAUDE.md"));
+        let paths: Vec<_> = targets.iter().map(|(path, _)| path.as_os_str()).collect();
+        assert!(paths.contains(&std::ffi::OsStr::new("CLAUDE.md")));
+        assert!(paths.contains(&std::ffi::OsStr::new("docs/specs/responsibilities.md")));
+        assert!(!paths
+            .iter()
+            .any(|path| path.to_string_lossy().ends_with(".rs")));
+        assert_eq!(targets.len(), 2);
     }
 
     #[tokio::test]
