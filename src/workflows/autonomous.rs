@@ -7,10 +7,17 @@ use serde::Serialize;
 use crate::client::AiClient;
 use crate::intel::{plan, AgentPlan, IntelError, PlanRequest, PlanResponse, PlanningResult};
 use crate::knowledge::Knowledge;
-use crate::runtime::Runtime;
+use crate::runtime::{CommandResult, Runtime};
 use crate::workflows::issue::{
     Issue, IssueImplementationRequest, IssueImplementationWorkflow, WorkflowError,
 };
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CommandOutcome {
+    pub exit_code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
 
 /// Dry-run prints the inspect set. Execute writes via [`IssueImplementationWorkflow`].
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -26,8 +33,46 @@ pub struct ImplementReport {
     pub resolved_execution_paths: Vec<String>,
     pub files_modified: Vec<String>,
     pub planning: AgentPlan,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub command_results: Vec<CommandOutcome>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub git_diff: Option<String>,
+}
+
+const MAX_COMMAND_TEXT: usize = 8000;
+
+fn truncate_cmd(text: &str) -> String {
+    if text.len() <= MAX_COMMAND_TEXT {
+        text.to_string()
+    } else {
+        format!("{}…", &text[..MAX_COMMAND_TEXT])
+    }
+}
+
+fn command_outcomes(results: &[CommandResult]) -> Vec<CommandOutcome> {
+    results
+        .iter()
+        .map(|result| CommandOutcome {
+            exit_code: result.exit_code,
+            stdout: truncate_cmd(&result.stdout),
+            stderr: truncate_cmd(&result.stderr),
+        })
+        .collect()
+}
+
+fn summary_from_failed_commands(results: &[CommandOutcome]) -> String {
+    results
+        .iter()
+        .find(|result| result.exit_code != 0)
+        .map(|result| {
+            let body = if !result.stderr.trim().is_empty() {
+                result.stderr.trim()
+            } else {
+                result.stdout.trim()
+            };
+            format!("command exit {}: {body}", result.exit_code)
+        })
+        .unwrap_or_default()
 }
 
 /// Why this issue must not run unattended. `None` when the inspect set is usable.
@@ -113,6 +158,7 @@ pub fn report_from_plan(plan: PlanResponse, repo_name: &str, dry_run: bool) -> I
             resolved_execution_paths,
             files_modified: Vec::new(),
             planning,
+            command_results: Vec::new(),
             git_diff: None,
         };
     }
@@ -129,6 +175,7 @@ pub fn report_from_plan(plan: PlanResponse, repo_name: &str, dry_run: bool) -> I
         resolved_execution_paths,
         files_modified: Vec::new(),
         planning,
+        command_results: Vec::new(),
         git_diff: None,
     }
 }
@@ -150,13 +197,18 @@ pub async fn execute_implement<R: Runtime>(
     let result = workflow
         .execute(IssueImplementationRequest::new(issue, repository_root).with_inspection_set(files))
         .await?;
+    let command_results = command_outcomes(&result.command_results);
+    let mut summary = result.summary;
+    if !result.success && summary.trim().is_empty() {
+        summary = summary_from_failed_commands(&command_results);
+    }
     Ok(ImplementReport {
         success: result.success,
         declined: false,
         decline_reason: None,
         dry_run: false,
         llm_invoked: true,
-        summary: result.summary,
+        summary,
         inspection_set: plan.inspection_set.clone(),
         resolved_execution_paths: plan.resolved_execution_paths.clone(),
         files_modified: result
@@ -165,6 +217,7 @@ pub async fn execute_implement<R: Runtime>(
             .map(|p| p.to_string_lossy().replace('\\', "/"))
             .collect(),
         planning: plan.for_agent(),
+        command_results,
         git_diff: Some(result.git_diff.patch),
     })
 }
@@ -182,6 +235,7 @@ pub fn report_from_workflow_error(plan: &PlanResponse, err: &WorkflowError) -> I
         resolved_execution_paths: plan.resolved_execution_paths.clone(),
         files_modified: Vec::new(),
         planning: plan.for_agent(),
+        command_results: Vec::new(),
         git_diff: None,
     }
 }
@@ -261,5 +315,71 @@ mod prefix_tests {
         let json = serde_json::to_string(&report).unwrap();
         assert!(json.contains("\"success\":false"));
         assert!(json.contains("no_eligible_model"));
+    }
+
+    #[test]
+    fn failed_command_summary_uses_stderr() {
+        let results = vec![super::CommandOutcome {
+            exit_code: 101,
+            stdout: String::new(),
+            stderr: "error: cannot find type `AiClient` in this scope".into(),
+        }];
+        let summary = super::summary_from_failed_commands(&results);
+        assert!(summary.contains("command exit 101"));
+        assert!(summary.contains("cannot find type"));
+    }
+
+    #[test]
+    fn implement_report_json_includes_command_results() {
+        let plan = PlanResponse {
+            planning_source: "bindb",
+            planning_result: PlanningResult::Resolved,
+            fallback_required: false,
+            fallback_reason: None,
+            repository_discovery_recommended: false,
+            primary_source: "bindb",
+            inspection_set: vec!["src/lib.rs".into()],
+            resolved_execution_paths: vec!["src/lib.rs".into()],
+            unresolved: vec![],
+            reasoning: String::new(),
+            doctrine: vec![],
+            impact: vec![],
+            recent_changes: vec![],
+            linked_issues: vec![],
+            linked_prs: vec![],
+            linked_docs: vec![],
+            linked_skills: vec![],
+            origin_issues: vec![],
+            matched_kind: String::new(),
+            file_roles: vec![],
+            touch_sequence: vec![],
+            matched_summary: String::new(),
+            task_hint: String::new(),
+            metrics: PlanningMetrics {
+                planning_source: "bindb",
+                planning_result: PlanningResult::Resolved,
+                fallback_required: false,
+                fallback_reason: None,
+                inspection_set_size: 1,
+                files_opened_from_inspection_set: 0,
+                repository_search_performed: false,
+            },
+            guidance: vec![],
+        };
+        let err = WorkflowError::ImplementationFailed {
+            message: "empty_edits".into(),
+        };
+        let mut report = report_from_workflow_error(&plan, &err);
+        report.command_results = vec![super::CommandOutcome {
+            exit_code: 101,
+            stdout: String::new(),
+            stderr: "error: cannot find type `AiClient` in this scope".into(),
+        }];
+        report.summary = super::summary_from_failed_commands(&report.command_results);
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("\"command_results\""));
+        assert!(json.contains("\"exit_code\":101"));
+        assert!(json.contains("cannot find type"));
+        assert!(report.summary.contains("command exit 101"));
     }
 }

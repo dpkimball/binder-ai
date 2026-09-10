@@ -41,7 +41,7 @@ pub async fn implement(
     plan: &ImplementationPlan,
     files: &[(PathBuf, String)],
 ) -> Result<GeneratedEdits, WorkflowError> {
-    let targets = target_files(plan, files);
+    let targets = target_files(issue, plan, files);
     if targets.is_empty() {
         return Err(WorkflowError::ImplementationFailed {
             message: "empty_edits".into(),
@@ -64,7 +64,10 @@ pub async fn implement(
             }
             // Keep paths the model named that we did not ask for so the
             // workflow can refuse them. Dropping them looked like empty_edits.
-            edits.extend(round.extras);
+            // Docs issues must not apply leaked .rs replacements.
+            edits.extend(round.extras.into_iter().filter(|edit| {
+                !is_lockfile(&edit.path) && (!is_docs_issue(issue) || is_doc_path(&edit.path))
+            }));
         }
     }
     if edits.is_empty() {
@@ -158,29 +161,98 @@ async fn implement_one(
     Ok(None)
 }
 
+fn is_docs_issue(issue: &Issue) -> bool {
+    issue.title.trim().to_ascii_lowercase().starts_with("docs:")
+}
+
+fn is_doc_path(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("md" | "txt" | "rst")
+    )
+}
+
+fn is_lockfile(path: &Path) -> bool {
+    path.file_name().is_some_and(|name| name == "Cargo.lock")
+}
+
+fn is_readme(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("README.md"))
+}
+
+fn mentioned_in_issue(issue: &Issue, path: &Path) -> bool {
+    let blob = issue.render().to_ascii_lowercase();
+    let display = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase();
+    if blob.contains(&display) {
+        return true;
+    }
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| blob.contains(&name.to_ascii_lowercase()))
+}
+
+fn to_pairs<'a>(rows: &[&'a (PathBuf, String)]) -> Vec<(&'a PathBuf, &'a str)> {
+    rows.iter()
+        .map(|(path, contents)| (path, contents.as_str()))
+        .collect()
+}
+
 fn target_files<'a>(
+    issue: &Issue,
     plan: &ImplementationPlan,
     files: &'a [(PathBuf, String)],
 ) -> Vec<(&'a PathBuf, &'a str)> {
-    if !plan.files.is_empty() {
-        let wanted: Vec<&PathBuf> = plan.files.iter().collect();
-        let selected: Vec<_> = files
+    let eligible = |path: &Path| {
+        if is_lockfile(path) {
+            return false;
+        }
+        !is_docs_issue(issue) || is_doc_path(path)
+    };
+    let scoped: Vec<&'a (PathBuf, String)> =
+        files.iter().filter(|(path, _)| eligible(path)).collect();
+    if scoped.is_empty() {
+        return Vec::new();
+    }
+    if is_docs_issue(issue) {
+        let mentioned: Vec<_> = scoped
             .iter()
+            .copied()
+            .filter(|(path, _)| mentioned_in_issue(issue, path))
+            .collect();
+        if !mentioned.is_empty() {
+            return to_pairs(&mentioned);
+        }
+        return to_pairs(
+            &scoped
+                .iter()
+                .copied()
+                .filter(|(path, _)| !is_readme(path))
+                .collect::<Vec<_>>(),
+        );
+    }
+    if !plan.files.is_empty() {
+        let selected: Vec<_> = scoped
+            .iter()
+            .copied()
             .filter(|(path, _)| {
-                wanted.iter().any(|want| {
-                    path == *want
+                plan.files.iter().any(|want| {
+                    path == want
                         || path.file_name() == want.file_name()
                         || path.ends_with(want)
                         || want.ends_with(path)
                 })
             })
-            .map(|(p, c)| (p, c.as_str()))
             .collect();
         if !selected.is_empty() {
-            return selected;
+            return to_pairs(&selected);
         }
     }
-    files.iter().map(|(p, c)| (p, c.as_str())).collect()
+    to_pairs(&scoped)
 }
 
 fn file_edit_schema() -> Value {
@@ -307,9 +379,45 @@ mod tests {
             (PathBuf::from("src/lib.rs"), "fn a() {}".into()),
             (PathBuf::from("CLAUDE.md"), "# doc\n".into()),
         ];
-        let targets = target_files(&plan, &files);
+        let issue = Issue::new("feat: change add", "code");
+        let targets = target_files(&issue, &plan, &files);
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].0, &PathBuf::from("CLAUDE.md"));
+    }
+
+    #[test]
+    fn docs_issue_targets_markdown_only() {
+        let plan = ImplementationPlan {
+            files: vec![
+                PathBuf::from("src/workflows/issue/workflow.rs"),
+                PathBuf::from("CLAUDE.md"),
+            ],
+            steps: Vec::new(),
+            summary: String::new(),
+        };
+        let files = vec![
+            (
+                PathBuf::from("src/workflows/issue/workflow.rs"),
+                "fn x() {}".into(),
+            ),
+            (PathBuf::from("CLAUDE.md"), "# doc\n".into()),
+            (
+                PathBuf::from("docs/specs/responsibilities.md"),
+                "gate\n".into(),
+            ),
+        ];
+        let issue = Issue::new(
+            "docs: fix fallback_required doc/code naming drift in workflows/issue",
+            "Update docs/specs/responsibilities.md and CLAUDE.md. The implementation is src/workflows/issue/workflow.rs.",
+        );
+        let targets = target_files(&issue, &plan, &files);
+        let paths: Vec<_> = targets.iter().map(|(path, _)| path.as_os_str()).collect();
+        assert!(paths.contains(&std::ffi::OsStr::new("CLAUDE.md")));
+        assert!(paths.contains(&std::ffi::OsStr::new("docs/specs/responsibilities.md")));
+        assert!(!paths
+            .iter()
+            .any(|path| path.to_string_lossy().ends_with(".rs")));
+        assert_eq!(targets.len(), 2);
     }
 
     #[tokio::test]
@@ -353,6 +461,52 @@ mod tests {
             .iter()
             .any(|e| e.path.as_os_str() == "README.md" && e.contents == "leaked\n"));
         assert!(!out.edits.iter().any(|e| e.path.as_os_str() == "CLAUDE.md"));
+    }
+
+    #[tokio::test]
+    async fn docs_issue_drops_leaked_rust_extra_paths() {
+        let scripted = ScriptedProvider::new().push_chat(assistant(
+            "{\"edits\":[{\"path\":\"CLAUDE.md\",\"contents\":\"# new\\n\"},{\"path\":\"src/lib.rs\",\"contents\":\"fn leaked() {}\\n\"}]}",
+        ));
+        let ai = AiClient::builder()
+            .llm(llm(scripted, Provider::Ollama, "mistral"))
+            .build();
+        let issue = Issue::new("docs: fix naming", "Align CLAUDE.md");
+        let plan = ImplementationPlan {
+            files: vec![PathBuf::from("CLAUDE.md")],
+            steps: Vec::new(),
+            summary: String::new(),
+        };
+        let files = vec![
+            (PathBuf::from("CLAUDE.md"), "# old\n".into()),
+            (PathBuf::from("src/lib.rs"), "fn x() {}\n".into()),
+        ];
+        let out = implement(&ai, &issue, &plan, &files).await.unwrap();
+        assert_eq!(out.edits.len(), 1);
+        assert_eq!(out.edits[0].path.as_os_str(), "CLAUDE.md");
+    }
+
+    #[tokio::test]
+    async fn drops_cargo_lock_extra_paths() {
+        let scripted = ScriptedProvider::new().push_chat(assistant(
+            "{\"edits\":[{\"path\":\"src/lib.rs\",\"contents\":\"fn x() { }\\n\"},{\"path\":\"Cargo.lock\",\"contents\":\"rewritten\\n\"}]}",
+        ));
+        let ai = AiClient::builder()
+            .llm(llm(scripted, Provider::Ollama, "mistral"))
+            .build();
+        let issue = Issue::new("feat: tweak lib", "code");
+        let plan = ImplementationPlan {
+            files: vec![PathBuf::from("src/lib.rs")],
+            steps: Vec::new(),
+            summary: String::new(),
+        };
+        let files = vec![
+            (PathBuf::from("src/lib.rs"), "fn x() {}\n".into()),
+            (PathBuf::from("Cargo.lock"), "old\n".into()),
+        ];
+        let out = implement(&ai, &issue, &plan, &files).await.unwrap();
+        assert_eq!(out.edits.len(), 1);
+        assert_eq!(out.edits[0].path.as_os_str(), "src/lib.rs");
     }
 
     #[tokio::test]
