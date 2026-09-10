@@ -44,6 +44,17 @@ impl<R: Runtime> IssueImplementationWorkflow<R> {
 
         let mut modified = Vec::new();
         for edit in &generated.edits {
+            if edit
+                .path
+                .file_name()
+                .is_some_and(|name| name == "Cargo.lock")
+            {
+                tracing::info!(
+                    path = %edit.path.display(),
+                    "workflow.skip_lockfile"
+                );
+                continue;
+            }
             if let Some(allowed) = &allowed {
                 if !allowed.contains(&normalize(&edit.path)) {
                     return Err(WorkflowError::ImplementationFailed {
