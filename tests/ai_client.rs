@@ -38,6 +38,27 @@ async fn summarize_uses_injected_llm() {
 }
 
 #[tokio::test]
+async fn chat_json_parses_fenced_struct() {
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct Label {
+        label: String,
+    }
+
+    let ai = AiClient::builder()
+        .llm(llm(
+            MockProvider::new().with_chat(assistant("```json\n{\"label\":\"ok\"}\n```")),
+            Provider::Ollama,
+            "mock",
+        ))
+        .build();
+    let parsed: Label = ai
+        .chat_json(AiRequest::new(TaskKind::Classification, "text"))
+        .await
+        .unwrap();
+    assert_eq!(parsed.label, "ok");
+}
+
+#[tokio::test]
 async fn chat_json_parses_struct() {
     #[derive(serde::Deserialize, Debug, PartialEq)]
     struct Label {

@@ -65,8 +65,7 @@ impl AiClient {
     pub async fn chat_json<T: DeserializeOwned>(&self, mut request: AiRequest) -> Result<T> {
         request.json_mode = true;
         let response = self.dispatch(request).await?;
-        serde_json::from_str(response.content.trim())
-            .map_err(|e| AiError::json(format!("assistant content is not valid JSON: {e}"), 1))
+        parse_assistant_json(&response.content)
     }
 
     pub async fn execute(&self, request: impl Into<AiRequest>) -> Result<AiResponse> {
@@ -376,8 +375,8 @@ impl AiClient {
             if !request.json_mode {
                 break;
             }
-            let content = response.message.content().trim();
-            if serde_json::from_str::<serde_json::Value>(content).is_ok() {
+            let content = response.message.content();
+            if json_value_from_assistant(content).is_some() {
                 break;
             }
             if attempt + 1 >= json_attempts {
@@ -530,6 +529,70 @@ impl AiClient {
     }
 }
 
+/// Deserialize assistant content as JSON. Accepts a raw object/array, or the
+/// same JSON wrapped in markdown fences / surrounding prose.
+pub(crate) fn parse_assistant_json<T: DeserializeOwned>(content: &str) -> Result<T> {
+    let payload = json_payload(content)
+        .ok_or_else(|| AiError::json("assistant content is not valid JSON".to_string(), 1))?;
+    serde_json::from_str(payload)
+        .map_err(|e| AiError::json(format!("assistant content is not valid JSON: {e}"), 1))
+}
+
+pub(crate) fn json_value_from_assistant(content: &str) -> Option<serde_json::Value> {
+    let payload = json_payload(content)?;
+    serde_json::from_str(payload).ok()
+}
+
+fn json_payload(content: &str) -> Option<&str> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+    {
+        return Some(trimmed);
+    }
+    if let Some(rest) = trimmed
+        .split_once("```json")
+        .or_else(|| trimmed.split_once("```JSON"))
+        .map(|(_, rest)| rest)
+    {
+        let rest = rest.trim_start_matches('\n');
+        if let Some((inner, _)) = rest.split_once("```") {
+            let inner = inner.trim();
+            if !inner.is_empty() {
+                return Some(inner);
+            }
+        }
+    }
+    if let Some(fence) = trimmed.find("```") {
+        let rest = trimmed[fence + 3..].trim_start();
+        let rest = rest
+            .strip_prefix("json")
+            .or_else(|| rest.strip_prefix("JSON"))
+            .unwrap_or(rest)
+            .trim_start();
+        if let Some((inner, _)) = rest.split_once("```") {
+            let inner = inner.trim();
+            if inner.starts_with('{') || inner.starts_with('[') {
+                return Some(inner);
+            }
+        }
+    }
+    let start = trimmed.find('{').or_else(|| trimmed.find('['))?;
+    let end = if trimmed.as_bytes().get(start) == Some(&b'{') {
+        trimmed.rfind('}')
+    } else {
+        trimmed.rfind(']')
+    }?;
+    if end > start {
+        Some(&trimmed[start..=end])
+    } else {
+        None
+    }
+}
+
 fn shrink_history(messages: &mut Vec<ChatMessage>) {
     let mut idx = None;
     for (i, msg) in messages.iter().enumerate() {
@@ -565,5 +628,31 @@ fn cached_response(task: TaskKind, content: String, name: String, version: u32) 
             execution_mode: ExecutionMode::Local,
         },
         ai_usage: AiUsage::default(),
+    }
+}
+
+#[cfg(test)]
+mod json_payload_tests {
+    use super::{json_payload, parse_assistant_json};
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Label {
+        label: String,
+    }
+
+    #[test]
+    fn parses_fenced_json() {
+        let raw = "Sure.\n```json\n{\"label\":\"ok\"}\n```\n";
+        let parsed: Label = parse_assistant_json(raw).unwrap();
+        assert_eq!(parsed.label, "ok");
+    }
+
+    #[test]
+    fn parses_prose_wrapped_object() {
+        let raw = "Here you go: {\"label\":\"ok\"} thanks.";
+        assert_eq!(json_payload(raw), Some(r#"{"label":"ok"}"#));
+        let parsed: Label = parse_assistant_json(raw).unwrap();
+        assert_eq!(parsed.label, "ok");
     }
 }

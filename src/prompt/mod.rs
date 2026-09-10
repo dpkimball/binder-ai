@@ -189,6 +189,11 @@ fn builtin_prompts() -> Vec<PromptVersion> {
             template: "Reply with JSON only: {\"edits\": [{\"path\": string, \"contents\": string}], \"summary\": string}. Each contents value is the full file. Do not include markdown.\n\n{input}".into(),
         },
         PromptVersion {
+            name: "issue-implementation-edit".into(),
+            version: 2,
+            template: "Reply with JSON only for this one file: {\"path\": string, \"contents\": string, \"summary\": string}. contents is the full replacement. Never return {} or empty edits. Do not include markdown.\n\n{input}".into(),
+        },
+        PromptVersion {
             name: "complete".into(),
             version: 1,
             template: "{input}".into(),
