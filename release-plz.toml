@@ -1,0 +1,4 @@
+[workspace]
+publish = false
+git_release_enable = false
+dependencies_update = false
