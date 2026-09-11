@@ -1,0 +1,78 @@
+name: Release-plz
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  release-plz:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_WORKFLOWGITACTION }}
+      # GitHub-hosted runners can't reach LAN Kellnr — clone binder-llm and patch the dep line.
+      # The patch is ephemeral for `release` (no commit). For `release-pr`, we amend it out afterward.
+      - name: Checkout binder-llm as path dependency
+        env:
+          GH_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" \
+            "${GITHUB_WORKSPACE}/../binder-llm"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("Cargo.toml")
+          t = p.read_text()
+          old = 'binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }'
+          new = 'binder-llm = { path = "../binder-llm", default-features = false }'
+          if old in t:
+              p.write_text(t.replace(old, new, 1))
+          PY
+      - name: Release (create git tag when Cargo.toml version is untagged)
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION }}
+      - id: release-pr
+        name: Release PR (open version-bump PR)
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION }}
+      # The dep patch leaked into the Release PR commit. Amend it out so the PR is version-bump only.
+      - name: Revert dep patch from Release PR commit
+        if: steps.release-pr.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION }}
+          RELEASE_PR_JSON: ${{ steps.release-pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          PR_BRANCH=$(echo "${RELEASE_PR_JSON:-[]}" | jq -r '.[0].head_branch // empty')
+          if [ -z "$PR_BRANCH" ]; then exit 0; fi
+          git fetch origin "$PR_BRANCH"
+          git checkout "$PR_BRANCH"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("Cargo.toml")
+          t = p.read_text()
+          old = 'binder-llm = { path = "../binder-llm", default-features = false }'
+          new = 'binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }'
+          if old in t:
+              p.write_text(t.replace(old, new, 1))
+          PY
+          git add Cargo.toml
+          if ! git diff --staged --quiet; then
+            git -c user.email="github-actions[bot]@users.noreply.github.com" \
+                -c user.name="github-actions[bot]" \
+                commit --amend --no-edit
+            git push --force-with-lease origin "$PR_BRANCH"
+          fi
