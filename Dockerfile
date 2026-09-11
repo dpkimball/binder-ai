@@ -50,6 +50,30 @@ COPY src ./src
 RUN cargo install --locked --path . --bin binder-ai-serve --root /out --features intel
 RUN strip /out/bin/binder-ai-serve || true
 
+FROM rust:1-slim-bookworm AS implement-build
+ARG CARGO_REGISTRIES_DPK_INDEX
+ENV CARGO_REGISTRIES_DPK_INDEX=$CARGO_REGISTRIES_DPK_INDEX
+WORKDIR /src/binder-ai
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    cmake \
+    git \
+    libssl-dev \
+    pkg-config \
+  && rm -rf /var/lib/apt/lists/*
+COPY .cargo/config.toml /usr/local/cargo/config.toml
+COPY Cargo.toml Cargo.lock README.md build.rs ./
+RUN sed -i 's|http://127\.0\.0\.1:31127|http://host.docker.internal:31127|g' Cargo.lock
+COPY src ./src
+RUN cargo install --locked --path . --bin binder-ai-implement --root /out \
+  && strip /out/bin/binder-ai-implement || true
+
+# implement-artifacts: minimal image for GHCR (foreman copies the binary from here)
+FROM debian:bookworm-slim AS implement-artifacts
+COPY --from=implement-build /out/bin/binder-ai-implement /out/bin/binder-ai-implement
+
 FROM debian:bookworm-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl git \
