@@ -8,12 +8,17 @@ Choose **one** for each linked issue (required). GitHub only auto-closes on **Cl
 - [ ] **Updates** #___ — progress only; the issue stays open. Put `Implements #<N>` in this body.
 
 ## Test plan
-- [ ] **N/A k8s `dev` deploy** — rust library; `make b` is lint + test (+ local Kellnr publish)
-- [ ] `cargo test --all-features` passed
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings` passed
+- [ ] **Deployed to local k8s `dev` before opening this PR** (`make b` / package equivalent after sourcing `env.sh`)
+- [ ] Reported deploy outcome (success / error) in this PR
+- [ ] Smoked the change in `dev` (service URL / NodePort — not unit tests only)
+- [ ] Lint + tests passed locally on the feature branch
 - [ ] Followed `.github/PR_CHECKLIST.md`
 
 ## Links
 - Issue: #
 
-Closes #
+Closes #   <!-- or Implements # if this PR only updates the issue -->
+
+---
+**Hard gate:** Do not open this PR until the **Deployed to local k8s `dev`** box is honestly checked (or marked N/A with reason for docs-only / no runtime impact).
+**Issue gate:** Do not leave both Closes and Updates blank. Use `Closes` only when merge should close the issue.
