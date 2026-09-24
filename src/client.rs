@@ -21,8 +21,8 @@ use crate::task::{Task, TaskKind};
 use crate::telemetry::{estimate_cost_for, trace_err, trace_ok, trace_start, AiMetrics};
 use crate::tools::{ToolExecutor, ToolRegistry};
 use binder_llm::{
-    ChatMessage, ChatRequest, ChatResponse, EmbeddingInput, EmbeddingRequest, EmbeddingResponse,
-    FinishReason, Provider, Usage,
+    ChatImage, ChatMessage, ChatRequest, ChatResponse, EmbeddingInput, EmbeddingRequest,
+    EmbeddingResponse, FinishReason, Provider, Usage,
 };
 
 /// Binder applications construct this and nothing else for AI work.
@@ -161,6 +161,21 @@ impl AiClient {
             .await?)
     }
 
+    fn question_message(request: &AiRequest) -> ChatMessage {
+        if request.images.is_empty() {
+            return ChatMessage::user(&request.input);
+        }
+        let images = request
+            .images
+            .iter()
+            .map(|image| ChatImage {
+                media_type: image.media_type.clone(),
+                bytes: image.bytes.clone(),
+            })
+            .collect();
+        ChatMessage::user_with_images(&request.input, images)
+    }
+
     async fn dispatch(&self, request: AiRequest) -> Result<AiResponse> {
         let started = Instant::now();
         let prompt_ref = request
@@ -215,7 +230,7 @@ impl AiClient {
         if !context.is_empty() {
             messages.push(ChatMessage::user(format!("Context:\n{context}")));
         }
-        messages.push(ChatMessage::user(&request.input));
+        messages.push(Self::question_message(&request));
 
         let mut last_err = AiError::routing("no provider succeeded");
         let mut fallbacks = 0;
@@ -654,5 +669,134 @@ mod json_payload_tests {
         assert_eq!(json_payload(raw), Some(r#"{"label":"ok"}"#));
         let parsed: Label = parse_assistant_json(raw).unwrap();
         assert_eq!(parsed.label, "ok");
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::AiClient;
+    use crate::request::AiRequest;
+    use crate::task::TaskKind;
+
+    #[test]
+    fn question_message_keeps_image_bytes() {
+        let png = vec![0x89, 0x50, 0x4e, 0x47];
+        let request = AiRequest::new(TaskKind::Reasoning, "Is this a company logo?")
+            .with_image("image/png", png.clone());
+        let message = AiClient::question_message(&request);
+        assert_eq!(message.images().len(), 1);
+        assert_eq!(message.images()[0].bytes, png);
+        assert_eq!(message.images()[0].media_type, "image/png");
+    }
+
+    /// Set `BINDER_LOGO_VISION=1`. Uses local `ministral-3:3b` (vision).
+    #[tokio::test]
+    async fn local_vision_model_judges_a_logo_mark() {
+        if std::env::var("BINDER_LOGO_VISION").ok().as_deref() != Some("1") {
+            return;
+        }
+        let png = mark_png();
+        let mut request = AiRequest::new(
+            TaskKind::Reasoning,
+            "Is this image a company logo? Answer yes or no, then one short reason.",
+        )
+        .with_policy(crate::policy::ExecutionPolicy::LocalOnly)
+        .with_image("image/png", png);
+        request.override_provider = Some(binder_llm::Provider::Ollama);
+        request.override_model = Some("ministral-3:3b".into());
+        let client = AiClient::builder()
+            .routing_policy(crate::policy::ExecutionPolicy::LocalOnly)
+            .preferred_provider(binder_llm::Provider::Ollama)
+            .build();
+        let reply = client.chat(request).await.expect("vision reply");
+        eprintln!(
+            "logo vision model={} finish={:?} text={}",
+            reply.execution.model, reply.finish_reason, reply.content
+        );
+        let text = reply.content.to_ascii_lowercase();
+        assert!(
+            text.trim_start().starts_with("no"),
+            "reply was {}",
+            reply.content
+        );
+    }
+
+    fn mark_png() -> Vec<u8> {
+        const W: usize = 64;
+        const H: usize = 64;
+        let mut raw = Vec::with_capacity((1 + W * 3) * H);
+        for y in 0..H {
+            raw.push(0);
+            for x in 0..W {
+                let dx = x as i32 - 32;
+                let dy = y as i32 - 32;
+                let inside = dx * dx + dy * dy < 18 * 18;
+                if inside {
+                    raw.extend_from_slice(&[20, 70, 160]);
+                } else {
+                    raw.extend_from_slice(&[255, 255, 255]);
+                }
+            }
+        }
+        fn chunk(tag: &[u8; 4], data: &[u8]) -> Vec<u8> {
+            let mut out = (data.len() as u32).to_be_bytes().to_vec();
+            out.extend_from_slice(tag);
+            out.extend_from_slice(data);
+            let mut crc_bytes = tag.to_vec();
+            crc_bytes.extend_from_slice(data);
+            let crc = crc32(&crc_bytes);
+            out.extend_from_slice(&crc.to_be_bytes());
+            out
+        }
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&(W as u32).to_be_bytes());
+        ihdr.extend_from_slice(&(H as u32).to_be_bytes());
+        ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend(chunk(b"IHDR", &ihdr));
+        png.extend(chunk(b"IDAT", &deflate_stored(&raw)));
+        png.extend(chunk(b"IEND", &[]));
+        png
+    }
+
+    fn crc32(data: &[u8]) -> u32 {
+        let mut crc = 0xffff_ffffu32;
+        for byte in data {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                let mask = (crc & 1).wrapping_neg();
+                crc = (crc >> 1) ^ (0xedb8_8320 & mask);
+            }
+        }
+        !crc
+    }
+
+    fn deflate_stored(data: &[u8]) -> Vec<u8> {
+        let mut out = vec![0x78, 0x01];
+        let mut rest = data;
+        while !rest.is_empty() {
+            let take = rest.len().min(65535);
+            let (block, next) = rest.split_at(take);
+            rest = next;
+            let last = rest.is_empty();
+            out.push(if last { 1 } else { 0 });
+            let len = take as u16;
+            out.extend_from_slice(&len.to_le_bytes());
+            out.extend_from_slice(&(!len).to_le_bytes());
+            out.extend_from_slice(block);
+        }
+        let sum = adler32(data);
+        out.extend_from_slice(&sum.to_be_bytes());
+        out
+    }
+
+    fn adler32(data: &[u8]) -> u32 {
+        let mut a = 1u32;
+        let mut b = 0u32;
+        for byte in data {
+            a = (a + u32::from(*byte)) % 65521;
+            b = (b + a) % 65521;
+        }
+        (b << 16) | a
     }
 }

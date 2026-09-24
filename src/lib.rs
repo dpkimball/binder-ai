@@ -67,7 +67,7 @@ pub use policy::{ExecutionPolicy, RoutingPolicy};
 pub use prompt::manager::PromptManager;
 pub use prompt::{PromptRef, PromptRegistry, PromptVersion};
 pub use providers::{DefaultLlmFactory, LlmFactory, StaticLlmFactory};
-pub use request::{AiRequest, AiRequestBuilder};
+pub use request::{AiImage, AiRequest, AiRequestBuilder};
 pub use response::{AiResponse, AiUsage, ExecutionTrace};
 pub use router::Router;
 pub use routing::{CatalogSelector, FallbackChain, ModelSelection, ModelSelector, ModelTarget};

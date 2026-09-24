@@ -43,6 +43,16 @@ pub struct AiRequest {
     pub context_tokens: Option<u64>,
     #[serde(default)]
     pub use_tools: bool,
+    /// Image bytes for the question. Provider encoding stays in binder-llm.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<AiImage>,
+}
+
+/// One image attached to an [`AiRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiImage {
+    pub media_type: String,
+    pub bytes: Vec<u8>,
 }
 
 impl AiRequest {
@@ -68,7 +78,16 @@ impl AiRequest {
             model_override: None,
             max_cost: None,
             context_tokens: None,
+            images: Vec::new(),
         }
+    }
+
+    pub fn with_image(mut self, media_type: impl Into<String>, bytes: Vec<u8>) -> Self {
+        self.images.push(AiImage {
+            media_type: media_type.into(),
+            bytes,
+        });
+        self
     }
 
     pub fn from_task(task: Task) -> Self {
