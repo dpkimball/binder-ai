@@ -9,8 +9,8 @@ description = "Binder AI orchestration: routing, prompts, tools, and task-orient
 repository = "https://github.com/dpkimball/binder-ai"
 homepage = "https://github.com/dpkimball/binder-ai-releases"
 readme = "README.md"
-# Private Kellnr registry only — never crates.io.
-# Public consumers: binder-ai-releases binaries (see docs/specs/private-source-public-binary.md).
+# Crate publish stays on the private Kellnr registry. Source consumers use the
+# sibling path below. crates.io publication is a separate choice.
 publish = ["dpk"]
 
 [features]
@@ -40,7 +40,7 @@ required-features = ["intel"]
 async-trait = "0.1"
 axum = { version = "0.7", optional = true }
 base64 = "0.22"
-binder-llm = { version = "0.1.0", registry = "dpk", default-features = false }
+binder-llm = { path = "../binder-llm", default-features = false }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -3,14 +3,9 @@
 
 name: Security Audit
 
+# Private dpk-ci runner. Not on pull_request: untrusted PR code must not
+# reach product-ci or inherited secrets. Public checks are in ci.yml.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.mdx"
-      - "**/*.rst"
-      - "**/*.txt"
   push:
     branches: [master, main]
   workflow_dispatch:

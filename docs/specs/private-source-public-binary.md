@@ -1,9 +1,9 @@
 ---
 id: private-source-public-binary
 title: binder-ai — private source / public binary distribution
-status: draft
+status: superseded
 created: 2026-09-02
-updated: 2026-09-02
+updated: 2026-10-05
 owner: binder-ai
 github_issue: https://github.com/dpkimball/binder-ai/issues/67
 related:
@@ -14,6 +14,8 @@ related:
 ---
 
 # binder-ai — private source / public binary distribution
+
+> **Superseded for source licensing.** The source repository is MIT (`LICENSE`). This document describes the earlier private-source / public-binary channel. The readiness checklist lives in the codeintel repo at `docs/public-release-readiness.md`.
 
 ## Purpose
 
