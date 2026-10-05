@@ -1,9 +1,9 @@
 name: Image
 
+# Private image build on product-ci. Not on pull_request: untrusted PR code
+# must not reach that runner or its credentials. Public checks are in ci.yml.
 on:
   push:
-    branches: [master]
-  pull_request:
     branches: [master]
   workflow_dispatch: {}
 

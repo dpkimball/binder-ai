@@ -7,7 +7,7 @@ Includes:
   binder-ai-plan   — local plan against YOUR codeintel/bindb store
   binder-ai-serve  — HTTP service (operator deploy)
 
-Source is privately maintained and is not included.
+Source is MIT licensed in https://github.com/dpkimball/binder-ai.
 
 Prerequisites
 -------------
@@ -52,7 +52,7 @@ CODEINTEL_BIN / --codeintel (optional)
 License
 -------
 
-See LICENSE.txt. Proprietary binary distribution — not open-source software.
+See LICENSE.txt in this archive (MIT).
 
 Support
 -------

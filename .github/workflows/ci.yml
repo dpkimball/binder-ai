@@ -11,10 +11,54 @@ concurrency:
   group: binder-ai-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  ci:
-    uses: dpkimball/dpk-ci/.github/workflows/rust-library-ci.yml@master
-    with:
-      project_name: binder-ai
-      runner: product-ci
-    secrets: inherit
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout binder-ai
+        uses: actions/checkout@v4
+        with:
+          path: binder-ai
+
+      # Path dependency is ../binder-llm. No token: this clone must work for a
+      # fork once binder-llm is public. Do not pass secrets into this job.
+      - name: Checkout binder-llm
+        uses: actions/checkout@v4
+        with:
+          repository: dpkimball/binder-llm
+          ref: master
+          path: binder-llm
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            binder-ai/target
+          key: ${{ runner.os }}-binder-ai-${{ hashFiles('binder-ai/Cargo.lock') }}
+
+      - name: Format check
+        working-directory: binder-ai
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        working-directory: binder-ai
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Test
+        working-directory: binder-ai
+        run: cargo test --locked --all-features

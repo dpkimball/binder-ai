@@ -184,20 +184,24 @@ Production `Knowledge` is a bindb/codeintel adapter. `MemoryKnowledge` is the te
 
 ## Develop
 
+Clone `binder-llm` beside this repository. The crate depends on that sibling path. No private registry is required to build.
+
 ```text
-dpk-workspace/
-  dpk-build/
+workspace/
   binder-llm/
   binder-ai/
 ```
 
 ```sh
-cargo test --all-features
-cargo clippy --all-targets --all-features -- -D warnings
-make b   # lint + test; publishes to DEV Kellnr when not CI
+cd binder-ai
+cargo fmt -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked --all-features
 ```
 
-Private Kellnr registry only (`publish = ["dpk"]`). Never crates.io. Depends on `binder-llm` from registry `dpk`.
+`make b` publishes this crate to the private Kellnr registry (`publish = ["dpk"]`). That registry is an internal publishing path. crates.io publication is a separate choice.
+
+Plan and ask also need a `codeintel` binary and a bindb store at runtime. Those are not Cargo dependencies.
 
 ## Out of scope (deferred)
 
@@ -205,4 +209,4 @@ Multi-agent graphs, MCP client, RAG pipelines, long-term memory, evaluation harn
 
 ## License
 
-See repository license / parent workspace policy.
+MIT. See [LICENSE](LICENSE).
