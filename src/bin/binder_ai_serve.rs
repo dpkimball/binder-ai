@@ -206,9 +206,12 @@ async fn run() -> Result<(), String> {
     if args.iter().any(|a| a == "-h" || a == "--help") {
         eprintln!("binder-ai-serve --store DIR [--listen HOST:PORT] [--codeintel BIN]");
         eprintln!("  -V, --version    Print version and build provenance");
-        eprintln!("  default listen: 0.0.0.0:7841 (or BINDER_AI_LISTEN)");
+        eprintln!("  default listen: 127.0.0.1:7841 (override with --listen or BINDER_AI_LISTEN)");
+        eprintln!(
+            "  no authentication; do not publish the port without an access control in front of it"
+        );
         eprintln!("  BINDER_AI_WORKSPACE: default PlanRequest.workspace when JSON omits it");
-        eprintln!("  POST /plan  POST /explain  POST /ask  POST /questions  POST /questions/correct  PATCH /questions");
+        eprintln!("  POST /plan  POST /federation/impact  POST /explain  POST /ask  POST /questions  POST /questions/correct  PATCH /questions");
         eprintln!("  POST /questions/retire  POST /questions/reactivate  POST /questions/delete");
         eprintln!("  POST /knowledge/engineering/* — aliases for engineering routes above");
         return Ok(());
@@ -218,7 +221,7 @@ async fn run() -> Result<(), String> {
         .ok_or("missing --store (or BINDER_AI_CODEINTEL_STORE)")?;
     let listen = flag(&args, "--listen")
         .or_else(|| env::var("BINDER_AI_LISTEN").ok())
-        .unwrap_or_else(|| "0.0.0.0:7841".into());
+        .unwrap_or_else(|| "127.0.0.1:7841".into());
     let codeintel = flag(&args, "--codeintel")
         .unwrap_or_else(|| env::var("CODEINTEL_BIN").unwrap_or_else(|_| "codeintel".into()));
     let addr: SocketAddr = listen
@@ -246,6 +249,7 @@ async fn run() -> Result<(), String> {
     let app = Router::new()
         .route("/health", get(health_handler))
         .route("/plan", post(plan_handler))
+        .route("/federation/impact", post(federation_impact_handler))
         .route("/explain", post(explain_handler))
         .route("/ask", post(ask_handler))
         .route("/questions", post(questions_handler))
@@ -333,6 +337,76 @@ async fn health_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::
         }
     }
     Json(body)
+}
+
+const FEDERATION_MAX_PATHS: usize = 200;
+
+#[derive(Debug, Deserialize)]
+struct FederationImpactRequest {
+    repo: String,
+    paths: Vec<String>,
+}
+
+fn validate_federation_request(req: &FederationImpactRequest) -> Result<(), String> {
+    let repo = req.repo.trim();
+    if repo.is_empty()
+        || !repo
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+    {
+        return Err("repo must be a codeintel repository name".into());
+    }
+    if req.paths.is_empty() {
+        return Err("paths must not be empty".into());
+    }
+    if req.paths.len() > FEDERATION_MAX_PATHS {
+        return Err(format!("at most {FEDERATION_MAX_PATHS} paths"));
+    }
+    for path in &req.paths {
+        if path.len() > 1024 || path.contains('\0') || path.contains('\n') {
+            return Err("invalid path".into());
+        }
+    }
+    Ok(())
+}
+
+async fn federation_impact_handler(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<FederationImpactRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    validate_federation_request(&request).map_err(|err| (StatusCode::BAD_REQUEST, err))?;
+    let repo = request.repo.trim().to_string();
+    let mut cmd = Command::new(&state.codeintel_bin);
+    cmd.arg("federation")
+        .arg("--store")
+        .arg(&state.store)
+        .arg("--repo")
+        .arg(&repo);
+    for path in &request.paths {
+        cmd.arg("--path").arg(path);
+    }
+    let output = cmd.output().map_err(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("codeintel federation: {err}"),
+        )
+    })?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        let err = err.trim();
+        let err = if err.len() > 500 { &err[..500] } else { err };
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("codeintel federation failed: {err}"),
+        ));
+    }
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("codeintel federation json: {err}"),
+        )
+    })?;
+    Ok(Json(body))
 }
 
 async fn plan_handler(
@@ -1086,4 +1160,28 @@ fn flag(args: &[String], name: &str) -> Option<String> {
     args.windows(2)
         .find(|pair| pair[0] == name)
         .map(|pair| pair[1].clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn federation_request_rejects_empty_and_bad_repo() {
+        let empty = FederationImpactRequest {
+            repo: "codeintel".into(),
+            paths: vec![],
+        };
+        assert!(validate_federation_request(&empty).is_err());
+        let bad = FederationImpactRequest {
+            repo: "repo/name".into(),
+            paths: vec!["src/lib.rs".into()],
+        };
+        assert!(validate_federation_request(&bad).is_err());
+        let ok = FederationImpactRequest {
+            repo: "codeintel".into(),
+            paths: vec!["src/lib.rs".into()],
+        };
+        assert!(validate_federation_request(&ok).is_ok());
+    }
 }
