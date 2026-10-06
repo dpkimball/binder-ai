@@ -19,12 +19,10 @@ Architectural context comes from bindb (`Knowledge`) before any LLM call. See [d
 - Semantic retries, token budgets, cost estimates, tracing metadata
 - `Runtime` for files, search, structured commands, and git (not LLM providers)
 - `IssueImplementationWorkflow` for a single concrete issue → plan → edit → fmt → test → diff path
-- `HygieneEngine` for optional Rust source remediation from deterministic repository findings (inspection stays outside this crate). Dashboard AI still uses `IssueImplementationWorkflow` search.
-- `HygieneWorkflow` for bindb-first Hygiene: query `Knowledge`, skip binder-llm when dispatch is deterministic, validate, re-index, record execution history
 - `EngineeringWorkflow` for bindb-first engineering: query `Knowledge`, open only the inspection set, invoke binder-llm, validate, re-index
 - `binder-ai-plan` — one-shot inspect set for Cursor (stdout JSON, no HTTP, no model, no writes)
-- `binder-ai-implement` — unattended issue implementation (dry-run default; `--execute` writes; no `--publish` in this slice)
-- `binder-ai-serve` (`--features intel`) — `POST /plan` engineering context for IDEs. No model, no writes.
+- `binder-ai-implement` — unattended issue implementation. The default is `--dry-run` (plan only, no model call, no writes). `--execute` may change files in the workspace through the implementation workflow. `--publish` is rejected.
+- `binder-ai-serve` (`--features intel`) — HTTP adapter with no authentication. `POST /plan` returns an inspection set and does not call a model or write files. `POST /ask` and `POST /explain` can call a model. Question routes can change the question bank. `POST /federation/impact` is read-only. With no `--listen` and no `BINDER_AI_LISTEN`, the process binds to `127.0.0.1:7841`. The container image sets `0.0.0.0:7841`; do not publish that port without an access control in front of it.
 
 HTTP for **providers** stays in `binder-llm`. Engineering intelligence is `binder-ai-plan` (CLI) and `binder-ai-serve` (HTTP). Workspace Cursor clients should call their `scripts/binder-plan` (or equivalent) before searching the tree.
 
@@ -134,26 +132,7 @@ let _fmt = runtime.execute(Command::new("cargo").arg("fmt")).await?;
 # }
 ```
 
-`MemoryRuntime` is for tests (in-memory files, scripted commands). `LocalRuntime::new(".")` is the development implementation.
-
-Repository Hygiene inspects repos deterministically. When a finding needs Rust source changes, it dispatches to `IssueImplementationWorkflow` through `HygieneEngine`. Inspection itself is not AI-driven. Production AI remediation uses default catalog discovery and `LocalOnly` routing:
-
-```rust
-use binder_ai::{AiClient, Finding, FindingKind, HygieneConfig, HygieneEngine, LocalRuntime, RoutingPolicy};
-
-# async fn hygiene(findings: Vec<Finding>) {
-let ai = AiClient::builder()
-    .routing_policy(RoutingPolicy::LocalOnly)
-    .build();
-let runtime = LocalRuntime::new(".").expect("workspace");
-let engine = HygieneEngine::new(HygieneConfig::default(), ai);
-let _report = engine.process_findings(runtime, &findings).await;
-# }
-```
-
-The workflow git diff is the output. Hygiene never commits, merges, pushes, or opens a PR.
-
-Bindb-first Hygiene (`HygieneWorkflow`): consume findings from live discovery, query `Knowledge` only when judgment needs an inspection set, skip binder-llm for deterministic apply, re-index and record history after validation. The Cursor skill writes `SkillApplyDocument` JSON and runs `cargo run --bin hygiene_apply`. Set `OLLAMA_HOST` for cluster/QA Ollama (Argo `ollama-qa` / `dev-proxies-ollama`). See [docs/specs/hygiene-workflow.md](docs/specs/hygiene-workflow.md). Dashboard Python apply calls that binary when it is on PATH.
+`MemoryRuntime` is for tests (in-memory files, scripted commands). `LocalRuntime::new(".")` is the development implementation. It runs commands on the host with the process environment. It is not a sandbox.
 
 Bindb-first engineering (facts from `Knowledge`, no `Runtime::search`):
 

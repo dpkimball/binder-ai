@@ -206,7 +206,10 @@ async fn run() -> Result<(), String> {
     if args.iter().any(|a| a == "-h" || a == "--help") {
         eprintln!("binder-ai-serve --store DIR [--listen HOST:PORT] [--codeintel BIN]");
         eprintln!("  -V, --version    Print version and build provenance");
-        eprintln!("  default listen: 0.0.0.0:7841 (or BINDER_AI_LISTEN)");
+        eprintln!("  default listen: 127.0.0.1:7841 (override with --listen or BINDER_AI_LISTEN)");
+        eprintln!(
+            "  no authentication; do not publish the port without an access control in front of it"
+        );
         eprintln!("  BINDER_AI_WORKSPACE: default PlanRequest.workspace when JSON omits it");
         eprintln!("  POST /plan  POST /federation/impact  POST /explain  POST /ask  POST /questions  POST /questions/correct  PATCH /questions");
         eprintln!("  POST /questions/retire  POST /questions/reactivate  POST /questions/delete");
@@ -218,7 +221,7 @@ async fn run() -> Result<(), String> {
         .ok_or("missing --store (or BINDER_AI_CODEINTEL_STORE)")?;
     let listen = flag(&args, "--listen")
         .or_else(|| env::var("BINDER_AI_LISTEN").ok())
-        .unwrap_or_else(|| "0.0.0.0:7841".into());
+        .unwrap_or_else(|| "127.0.0.1:7841".into());
     let codeintel = flag(&args, "--codeintel")
         .unwrap_or_else(|| env::var("CODEINTEL_BIN").unwrap_or_else(|_| "codeintel".into()));
     let addr: SocketAddr = listen
