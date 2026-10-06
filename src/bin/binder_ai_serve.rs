@@ -1,10 +1,12 @@
 //! Engineering intelligence HTTP adapter. Bindb planning + LLM explain/ask.
 
+use std::collections::HashSet;
 use std::env;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -25,6 +27,13 @@ struct AppState {
     codeintel_bin: PathBuf,
     knowledge: CodeintelKnowledge<ProcessCodeintelCli>,
     ai_client: AiClient,
+    refresh: RefreshGate,
+}
+
+struct RefreshGate {
+    enabled: bool,
+    token: String,
+    allowlist: HashSet<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -208,8 +217,9 @@ async fn run() -> Result<(), String> {
         eprintln!("  -V, --version    Print version and build provenance");
         eprintln!("  default listen: 127.0.0.1:7841 (override with --listen or BINDER_AI_LISTEN)");
         eprintln!(
-            "  no authentication; do not publish the port without an access control in front of it"
+            "  no authentication on plan/ask/explain; do not publish the port without an access control in front of it"
         );
+        eprintln!("  POST /refresh requires Authorization: Bearer and REFRESH_TRIGGER_ENABLED");
         eprintln!("  BINDER_AI_WORKSPACE: default PlanRequest.workspace when JSON omits it");
         eprintln!("  POST /plan  POST /federation/impact  POST /explain  POST /ask  POST /questions  POST /questions/correct  PATCH /questions");
         eprintln!("  POST /questions/retire  POST /questions/reactivate  POST /questions/delete");
@@ -250,6 +260,7 @@ async fn run() -> Result<(), String> {
         .route("/health", get(health_handler))
         .route("/plan", post(plan_handler))
         .route("/federation/impact", post(federation_impact_handler))
+        .route("/refresh", post(refresh_handler))
         .route("/explain", post(explain_handler))
         .route("/ask", post(ask_handler))
         .route("/questions", post(questions_handler))
@@ -288,6 +299,7 @@ async fn run() -> Result<(), String> {
             codeintel_bin,
             knowledge,
             ai_client,
+            refresh: refresh_gate_from_env(),
         }));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -337,6 +349,168 @@ async fn health_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::
         }
     }
     Json(body)
+}
+
+fn refresh_gate_from_env() -> RefreshGate {
+    let enabled = matches!(
+        env::var("REFRESH_TRIGGER_ENABLED").ok().as_deref(),
+        Some("1") | Some("true") | Some("TRUE")
+    );
+    let token = env::var("REFRESH_TRIGGER_TOKEN").unwrap_or_default();
+    let allowlist = env::var("REFRESH_REPO_ALLOWLIST")
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect();
+    RefreshGate {
+        enabled,
+        token,
+        allowlist,
+    }
+}
+
+fn tokens_equal(presented: &str, expected: &str) -> bool {
+    let a = presented.as_bytes();
+    let b = expected.as_bytes();
+    let mut diff = a.len() ^ b.len();
+    let n = a.len().max(b.len());
+    for i in 0..n {
+        let x = a.get(i).copied().unwrap_or(0);
+        let y = b.get(i).copied().unwrap_or(0);
+        diff |= usize::from(x ^ y);
+    }
+    diff == 0
+}
+
+fn authorize_refresh(gate: &RefreshGate, presented: Option<&str>) -> Result<(), StatusCode> {
+    if !gate.enabled || gate.token.is_empty() {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    match presented {
+        Some(token) if tokens_equal(token, &gate.token) => Ok(()),
+        _ => Err(StatusCode::UNAUTHORIZED),
+    }
+}
+
+fn refresh_repo_name(repo: &str, allowlist: &HashSet<String>) -> Result<String, String> {
+    let name = repo.trim();
+    let ok = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
+    if !ok {
+        return Err("repo must match ^[A-Za-z0-9._-]+$".into());
+    }
+    if !allowlist.contains(name) {
+        return Err("repo is not on the refresh allowlist".into());
+    }
+    Ok(name.to_string())
+}
+
+fn utc_timestamp() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let days = (secs / 86_400) as i64;
+    let tod = secs % 86_400;
+    let (y, m, d) = civil_from_days(days);
+    let hh = tod / 3600;
+    let mm = (tod % 3600) / 60;
+    let ss = tod % 60;
+    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
+}
+
+fn civil_from_days(z: i64) -> (i32, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as i32, m as u32, d as u32)
+}
+
+fn write_refresh_queue(store: &Path, name: &str) -> Result<(), String> {
+    let dir = store.join("refresh-queue");
+    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    let path = dir.join(name);
+    std::fs::write(&path, utc_timestamp()).map_err(|err| err.to_string())
+}
+
+fn apply_refresh(
+    store: &Path,
+    gate: &RefreshGate,
+    presented: Option<&str>,
+    repo: &str,
+) -> Result<String, (StatusCode, String)> {
+    authorize_refresh(gate, presented).map_err(|code| {
+        let msg = if code == StatusCode::SERVICE_UNAVAILABLE {
+            "refresh trigger is not configured"
+        } else {
+            "unauthorized"
+        };
+        (code, msg.into())
+    })?;
+    let name =
+        refresh_repo_name(repo, &gate.allowlist).map_err(|err| (StatusCode::BAD_REQUEST, err))?;
+    write_refresh_queue(store, &name).map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err))?;
+    Ok(name)
+}
+
+fn bearer_token(headers: &axum::http::HeaderMap) -> Option<&str> {
+    let value = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
+    let token = value.strip_prefix("Bearer ")?;
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RefreshRequest {
+    repo: String,
+}
+
+async fn refresh_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    body: Result<Json<RefreshRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    let presented = bearer_token(&headers);
+    let repo = match body {
+        Ok(Json(request)) => request.repo,
+        Err(_) => {
+            authorize_refresh(&state.refresh, presented).map_err(|code| {
+                let msg = if code == StatusCode::SERVICE_UNAVAILABLE {
+                    "refresh trigger is not configured"
+                } else {
+                    "unauthorized"
+                };
+                (code, msg.to_string())
+            })?;
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "body must be {\"repo\":\"<name>\"}".into(),
+            ));
+        }
+    };
+    let name = apply_refresh(&state.store, &state.refresh, presented, &repo)?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({ "queued": name })),
+    ))
 }
 
 const FEDERATION_MAX_PATHS: usize = 200;
@@ -1183,5 +1357,63 @@ mod tests {
             paths: vec!["src/lib.rs".into()],
         };
         assert!(validate_federation_request(&ok).is_ok());
+    }
+
+    fn gate(token: &str, names: &[&str]) -> RefreshGate {
+        RefreshGate {
+            enabled: true,
+            token: token.into(),
+            allowlist: names.iter().map(|name| (*name).to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn refresh_rejects_missing_and_wrong_token() {
+        let dir = std::env::temp_dir().join(format!("refresh-auth-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let g = gate("secret-token", &["codeintel"]);
+        let missing = apply_refresh(&dir, &g, None, "codeintel").unwrap_err();
+        assert_eq!(missing.0, StatusCode::UNAUTHORIZED);
+        let wrong = apply_refresh(&dir, &g, Some("other-token"), "codeintel").unwrap_err();
+        assert_eq!(wrong.0, StatusCode::UNAUTHORIZED);
+        assert!(!dir.join("refresh-queue").join("codeintel").exists());
+
+        let unset = RefreshGate {
+            enabled: true,
+            token: String::new(),
+            allowlist: g.allowlist.clone(),
+        };
+        let unavailable =
+            apply_refresh(&dir, &unset, Some("secret-token"), "codeintel").unwrap_err();
+        assert_eq!(unavailable.0, StatusCode::SERVICE_UNAVAILABLE);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn refresh_rejects_unknown_repo_without_a_queue_file() {
+        let dir = std::env::temp_dir().join(format!("refresh-deny-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let g = gate("secret-token", &["codeintel"]);
+        let bad = apply_refresh(&dir, &g, Some("secret-token"), "not-a-repo").unwrap_err();
+        assert_eq!(bad.0, StatusCode::BAD_REQUEST);
+        let slash = apply_refresh(&dir, &g, Some("secret-token"), "owner/repo").unwrap_err();
+        assert_eq!(slash.0, StatusCode::BAD_REQUEST);
+        assert!(!dir.join("refresh-queue").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn refresh_queues_an_allowlisted_repo() {
+        let dir = std::env::temp_dir().join(format!("refresh-ok-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let g = gate("secret-token", &["codeintel"]);
+        let name = apply_refresh(&dir, &g, Some("secret-token"), " codeintel ").unwrap();
+        assert_eq!(name, "codeintel");
+        let queued = std::fs::read_to_string(dir.join("refresh-queue").join("codeintel")).unwrap();
+        assert!(queued.ends_with('Z'));
+        assert!(queued.contains('T'));
+        let again = apply_refresh(&dir, &g, Some("secret-token"), "codeintel").unwrap();
+        assert_eq!(again, "codeintel");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
