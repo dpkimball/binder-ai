@@ -12,7 +12,7 @@ jobs:
   release-plz:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           token: ${{ secrets.PAT_WORKFLOWGITACTION }}
@@ -36,14 +36,14 @@ jobs:
               p.write_text(t.replace(old, new, 1))
           PY
       - name: Release (create git tag when Cargo.toml version is untagged)
-        uses: release-plz/action@v0.5
+        uses: release-plz/action@b2baf303c463c223526d52a8a91b0777f052cf3f # v0.5
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION }}
       - id: release-pr
         name: Release PR (open version-bump PR)
-        uses: release-plz/action@v0.5
+        uses: release-plz/action@b2baf303c463c223526d52a8a91b0777f052cf3f # v0.5
         with:
           command: release-pr
         env:

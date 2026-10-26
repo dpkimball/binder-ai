@@ -4,9 +4,8 @@
 # codeintel/bindb come from named BuildKit contexts (siblings in CI / make b).
 # Rebuild this image whenever codeintel gains CLI surface the chart relies on
 # (e.g. `architecture doc-compliance` for the store-refresh sidecar).
-# binder-llm comes from Kellnr (registry dpk), same as binder-server.
-# Index: CARGO_REGISTRIES_DPK_INDEX (env.sh locally; PRIVATE_CARGO_URL in CI).
-# Local docker: dpk.toml extra_args uses host.docker.internal (DEV Kellnr).
+# binder-llm, codeintel, and bindb come from named BuildKit contexts.
+# The locked build uses crates.io plus those path dependencies.
 
 ARG CARGO_REGISTRIES_DPK_INDEX
 
@@ -33,6 +32,9 @@ RUN strip /out/bin/codeintel || true
 FROM rust:1-slim-bookworm AS serve-build
 ARG CARGO_REGISTRIES_DPK_INDEX
 ENV CARGO_REGISTRIES_DPK_INDEX=$CARGO_REGISTRIES_DPK_INDEX
+WORKDIR /src
+COPY --from=binder-llm Cargo.toml Cargo.lock README.md build.rs LICENSE ./binder-llm/
+COPY --from=binder-llm src ./binder-llm/src
 WORKDIR /src/binder-ai
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -53,6 +55,9 @@ RUN strip /out/bin/binder-ai-serve || true
 FROM rust:1-slim-bookworm AS implement-build
 ARG CARGO_REGISTRIES_DPK_INDEX
 ENV CARGO_REGISTRIES_DPK_INDEX=$CARGO_REGISTRIES_DPK_INDEX
+WORKDIR /src
+COPY --from=binder-llm Cargo.toml Cargo.lock README.md build.rs LICENSE ./binder-llm/
+COPY --from=binder-llm src ./binder-llm/src
 WORKDIR /src/binder-ai
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -85,6 +90,9 @@ COPY --from=codeintel-build /out/bin/codeintel /usr/local/bin/codeintel
 COPY --from=serve-build /out/bin/binder-ai-serve /usr/local/bin/binder-ai-serve
 ENV BINDER_AI_CODEINTEL_STORE=/data
 ENV CODEINTEL_BIN=/usr/local/bin/codeintel
+# Bind every interface inside the pod network namespace so the ClusterIP
+# Service can reach the process. The chart does not publish a public port.
+# There is no authentication on /plan, /ask, or /explain.
 ENV BINDER_AI_LISTEN=0.0.0.0:7841
 EXPOSE 7841
 USER 65532:65532

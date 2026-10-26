@@ -237,6 +237,11 @@ async fn run() -> Result<(), String> {
     let addr: SocketAddr = listen
         .parse()
         .map_err(|err| format!("listen {listen}: {err}"))?;
+    if !addr.ip().is_loopback() {
+        eprintln!(
+            "warning: listening on {addr} with no authentication; do not publish this port without an access control in front of it"
+        );
+    }
 
     match binder_ai::install_bank_prefixes_from_env() {
         Ok(Some(path)) => eprintln!("bank prefixes loaded from {}", path.display()),

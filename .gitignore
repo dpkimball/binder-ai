@@ -4,3 +4,7 @@
 .DS_Store
 .dpk-build.lock
 .claude/
+
+.env
+.env.*
+/store/

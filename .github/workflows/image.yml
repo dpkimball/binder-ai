@@ -1,7 +1,10 @@
 name: Image
 
-# Private image build on product-ci. Not on pull_request: untrusted PR code
-# must not reach that runner or its credentials. Public checks are in ci.yml.
+# Maintainer image build on product-ci. Not on pull_request: a fork must not
+# reach that runner. Public checks are in ci.yml. The image builds from sibling
+# path dependencies (bindb, codeintel, binder-llm) and does not call the private
+# cargo registry. The helm bump at the bottom updates the private dpk-infra
+# chart and runs only for maintainers.
 on:
   push:
     branches: [master]
@@ -10,10 +13,6 @@ on:
 concurrency:
   group: binder-ai-image-${{ github.ref }}
   cancel-in-progress: true
-
-# Kellnr wiring matches binder-server deploy.yaml: configure-cargo-registry
-# + cargo_idx (index as-is) + build-push-action. Host/port stay in
-# PRIVATE_CARGO_URL. Destination differs (in-cluster registry, not GHCR).
 
 jobs:
   docker:
@@ -28,43 +27,37 @@ jobs:
           set -euo pipefail
           find "${GITHUB_WORKSPACE}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: binder-ai
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ github.repository_owner }}/codeintel
           path: codeintel
           token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ github.repository_owner }}/bindb
           path: bindb
           token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
 
-      - name: Configure Cargo registry dpk
-        uses: dpkimball/dpk-ci/.github/actions/configure-cargo-registry@master
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          cargo_url: ${{ secrets.PRIVATE_CARGO_URL }}
-
-      - name: Cargo index for docker
-        id: cargo_idx
-        run: |
-          set -euo pipefail
-          test -n "${CARGO_REGISTRIES_DPK_INDEX:-}"
-          echo "index=${CARGO_REGISTRIES_DPK_INDEX}" >> "$GITHUB_OUTPUT"
+          repository: ${{ github.repository_owner }}/binder-llm
+          path: binder-llm
+          token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
         with:
           # Host docker engine so tags/push hit localhost:30500 (QA registry).
           driver: docker
 
       - name: Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: localhost:30500/binder-ai-serve
           tags: |
@@ -72,15 +65,14 @@ jobs:
             type=raw,value=latest
 
       - name: Build image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ./binder-ai
           file: ./binder-ai/Dockerfile
-          build-args: |
-            CARGO_REGISTRIES_DPK_INDEX=${{ steps.cargo_idx.outputs.index }}
           build-contexts: |
             bindb=./bindb
             codeintel=./codeintel
+            binder-llm=./binder-llm
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           push: ${{ github.event_name != 'pull_request' }}
@@ -103,38 +95,31 @@ jobs:
         shell: bash
         run: find "${GITHUB_WORKSPACE}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: binder-ai
 
-      - name: Configure Cargo registry dpk
-        uses: dpkimball/dpk-ci/.github/actions/configure-cargo-registry@master
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          cargo_url: ${{ secrets.PRIVATE_CARGO_URL }}
+          repository: ${{ github.repository_owner }}/binder-llm
+          path: binder-llm
+          token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
 
-      - name: Cargo index for docker
-        id: cargo_idx
-        run: |
-          set -euo pipefail
-          test -n "${CARGO_REGISTRIES_DPK_INDEX:-}"
-          echo "index=${CARGO_REGISTRIES_DPK_INDEX}" >> "$GITHUB_OUTPUT"
-
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ./binder-ai
           file: ./binder-ai/Dockerfile
           target: implement-artifacts
-          build-args: |
-            CARGO_REGISTRIES_DPK_INDEX=${{ steps.cargo_idx.outputs.index }}
+          build-contexts: binder-llm=./binder-llm
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
@@ -155,7 +140,7 @@ jobs:
       TAG: sha-${{ needs.docker.outputs.short }}
     steps:
       - name: Checkout dpk-infra
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ github.repository_owner }}/dpk-infra
           token: ${{ secrets.PAT_WORKFLOWGITACTION }}

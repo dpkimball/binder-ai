@@ -186,6 +186,16 @@ Plan and ask also need a `codeintel` binary and a bindb store at runtime. Those 
 
 Multi-agent graphs, MCP client, RAG pipelines, long-term memory, evaluation harness, human approval workflows.
 
+## Stability
+
+0.1.x. `POST /plan` is the supported IDE entry. The HTTP service has no authentication. The process default is `127.0.0.1:7841`. The container listens on `0.0.0.0:7841` so a ClusterIP Service can reach it, and that port must not be published without an access control in front of it.
+
+A locked four-repository walkthrough is in [docs/examples/four-repo.md](docs/examples/four-repo.md).
+
+## Contributing
+
+Issues and pull requests are welcome. Security reports go through [GitHub Security Advisories](https://github.com/dpkimball/binder-ai/security/advisories/new). See [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
