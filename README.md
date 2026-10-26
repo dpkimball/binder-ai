@@ -194,7 +194,7 @@ A locked four-repository walkthrough is in [docs/examples/four-repo.md](docs/exa
 
 ## Contributing
 
-Issues and pull requests are welcome. Security reports go through [GitHub Security Advisories](https://github.com/dpkimball/binder-ai/security/advisories/new). See [SECURITY.md](SECURITY.md).
+Pull requests are not accepted. Fork the repository to keep your own changes. Open an issue for bugs or suggestions. Security reports go through [GitHub Security Advisories](https://github.com/dpkimball/binder-ai/security/advisories/new). See [SECURITY.md](SECURITY.md).
 
 ## License
 
