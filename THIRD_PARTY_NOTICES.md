@@ -18,7 +18,7 @@ Path dependencies (sibling crates in this release) are not listed here. Their li
 | cc | 1.4.4 | MIT OR Apache-2.0 |
 | cfg-if | 1.0.4 | MIT OR Apache-2.0 |
 | cfg_aliases | 0.2.2 | MIT |
-| chacha20 | 0.10.1 | MIT OR Apache-2.0 |
+| chacha20 | 0.10.2 | MIT OR Apache-2.0 |
 | cpufeatures | 0.3.0 | MIT OR Apache-2.0 |
 | crossbeam-deque | 0.8.7 | MIT OR Apache-2.0 |
 | crossbeam-epoch | 0.9.20 | MIT OR Apache-2.0 |
@@ -84,7 +84,7 @@ Path dependencies (sibling crates in this release) are not listed here. Their li
 | potential_utf | 0.1.6 | Unicode-3.0 |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 |
 | quinn | 0.11.11 | MIT OR Apache-2.0 |
-| quinn-proto | 0.11.17 | MIT OR Apache-2.0 |
+| quinn-proto | 0.11.19 | MIT OR Apache-2.0 |
 | quinn-udp | 0.5.15 | MIT OR Apache-2.0 |
 | quote | 1.0.47 | MIT OR Apache-2.0 |
 | r-efi | 6.0.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later |
@@ -97,9 +97,9 @@ Path dependencies (sibling crates in this release) are not listed here. Their li
 | ring | 0.17.14 | Apache-2.0 AND ISC |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT |
 | rustix | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
-| rustls | 0.23.43 | Apache-2.0 OR ISC OR MIT |
+| rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT |
 | rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 |
-| rustls-webpki | 0.103.15 | ISC |
+| rustls-webpki | 0.103.16 | ISC |
 | rustversion | 1.0.23 | MIT OR Apache-2.0 |
 | ryu | 1.0.23 | Apache-2.0 OR BSL-1.0 |
 | same-file | 1.0.6 | Unlicense/MIT |
@@ -127,7 +127,7 @@ Path dependencies (sibling crates in this release) are not listed here. Their li
 | tinystr | 0.8.4 | Unicode-3.0 |
 | tinyvec | 1.12.0 | Zlib OR Apache-2.0 OR MIT |
 | tinyvec_macros | 0.1.1 | MIT OR Apache-2.0 OR Zlib |
-| tokio | 1.53.1 | MIT |
+| tokio | 1.54.1 | MIT |
 | tokio-macros | 2.7.2 | MIT |
 | tokio-rustls | 0.26.4 | MIT OR Apache-2.0 |
 | tokio-util | 0.7.19 | MIT |
@@ -159,7 +159,7 @@ Path dependencies (sibling crates in this release) are not listed here. Their li
 | wasm-streams | 0.4.2 | MIT OR Apache-2.0 |
 | web-sys | 0.3.104 | MIT OR Apache-2.0 |
 | web-time | 1.1.0 | MIT OR Apache-2.0 |
-| webpki-roots | 1.0.9 | CDLA-Permissive-2.0 |
+| webpki-roots | 1.0.11 | CDLA-Permissive-2.0 |
 | winapi-util | 0.1.11 | Unlicense OR MIT |
 | windows-link | 0.2.1 | MIT OR Apache-2.0 |
 | windows-sys | 0.52.0 | MIT OR Apache-2.0 |
