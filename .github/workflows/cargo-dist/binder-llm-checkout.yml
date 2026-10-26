@@ -1,14 +1,11 @@
 # Included by cargo-dist via dist-workspace.toml github-build-setup.
-# GitHub-hosted runners cannot reach LAN Kellnr (PRIVATE_CARGO_URL).
-# Clone private binder-llm as a sibling and rewrite the registry dep to path.
+# binder-llm is a public path dependency.
 - name: Checkout binder-llm as path dependency
-  env:
-    GH_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION || secrets.GH_RELEASES_TOKEN || github.token }}
   run: |
     set -euo pipefail
     DEST="${GITHUB_WORKSPACE}/../binder-llm"
     if [ ! -f "${DEST}/Cargo.toml" ]; then
-      git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
+      git clone --depth 1 "https://github.com/dpkimball/binder-llm.git" "${DEST}"
     fi
     test -f "${DEST}/Cargo.toml"
     python3 - <<'PY'

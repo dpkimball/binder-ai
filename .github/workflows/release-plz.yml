@@ -19,12 +19,10 @@ jobs:
       # GitHub-hosted runners can't reach LAN Kellnr — clone binder-llm and patch the dep line.
       # The patch is ephemeral for `release` (no commit). For `release-pr`, we amend it out afterward.
       - name: Checkout binder-llm as path dependency
-        env:
-          GH_TOKEN: ${{ secrets.PAT_WORKFLOWGITACTION }}
         run: |
           set -euo pipefail
           git clone --depth 1 \
-            "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" \
+            "https://github.com/dpkimball/binder-llm.git" \
             "${GITHUB_WORKSPACE}/../binder-llm"
           python3 - <<'PY'
           from pathlib import Path

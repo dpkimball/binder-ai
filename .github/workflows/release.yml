@@ -67,7 +67,7 @@ jobs:
           set -euo pipefail
           DEST="${GITHUB_WORKSPACE}/../binder-llm"
           if [ ! -f "${DEST}/Cargo.toml" ]; then
-            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
+            git clone --depth 1 "https://github.com/dpkimball/binder-llm.git" "${DEST}"
           fi
           test -f "${DEST}/Cargo.toml"
           python3 - <<'PY'
@@ -160,7 +160,7 @@ jobs:
           set -euo pipefail
           DEST="${GITHUB_WORKSPACE}/../binder-llm"
           if [ ! -f "${DEST}/Cargo.toml" ]; then
-            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
+            git clone --depth 1 "https://github.com/dpkimball/binder-llm.git" "${DEST}"
           fi
           test -f "${DEST}/Cargo.toml"
           python3 - <<'PY'
@@ -238,7 +238,7 @@ jobs:
           set -euo pipefail
           DEST="${GITHUB_WORKSPACE}/../binder-llm"
           if [ ! -f "${DEST}/Cargo.toml" ]; then
-            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
+            git clone --depth 1 "https://github.com/dpkimball/binder-llm.git" "${DEST}"
           fi
           test -f "${DEST}/Cargo.toml"
           python3 - <<'PY'
@@ -314,7 +314,7 @@ jobs:
           set -euo pipefail
           DEST="${GITHUB_WORKSPACE}/../binder-llm"
           if [ ! -f "${DEST}/Cargo.toml" ]; then
-            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/dpkimball/binder-llm.git" "${DEST}"
+            git clone --depth 1 "https://github.com/dpkimball/binder-llm.git" "${DEST}"
           fi
           test -f "${DEST}/Cargo.toml"
           python3 - <<'PY'

@@ -27,18 +27,15 @@ jobs:
         with:
           path: binder-ai
 
-      # Path dependency is ../binder-llm. While binder-llm is private, this job
-      # needs a token that can read it. Fork pull requests do not receive
-      # PAT_WORKFLOWGITACTION. The ref is a commit, not the moving master branch.
-      # After binder-llm is public, drop the PAT and use the default token.
+      # Path dependency is ../binder-llm. binder-llm is public, so the default
+      # token can read it, including on a fork pull request. The ref is a commit.
       - name: Checkout binder-llm
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: dpkimball/binder-llm
-          ref: 634690cf2706cd2b30a6fc02e4fbb9b904054467
+          ref: 294dd57e0eb2ea7dc6e1c77e95ad001f6fe7a054
           path: binder-llm
           persist-credentials: false
-          token: ${{ secrets.PAT_WORKFLOWGITACTION || github.token }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
